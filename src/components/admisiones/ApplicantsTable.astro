@@ -1,0 +1,129 @@
+---
+import type { FilaAspirante } from '../../data/mockSecretaria';
+
+interface Props {
+  filas: FilaAspirante[];
+}
+const { filas } = Astro.props;
+
+function chipClase(valor: string) {
+  if (valor === 'Pagado' || valor === 'Aprobado') return 'chip chip--success';
+  if (valor === 'Pendiente') return 'chip chip--pending';
+  return 'chip chip--neutro';
+}
+---
+
+<div class="tabla card">
+  <div class="tabla__fila tabla__fila--header">
+    <span>Aspirante</span>
+    <span>Grado</span>
+    <span>Etapa actual</span>
+    <span>Formulario</span>
+    <span>Comité</span>
+  </div>
+  {
+    filas.map((f, i) => (
+      <div class={`tabla__fila tabla__fila--seleccionable ${i === 0 ? 'tabla__fila--activa' : ''}`} data-index={i} tabindex="0" role="button">
+        <span class="tabla__nombre" data-label="Aspirante">{f.nombre}</span>
+        <span class="tabla__texto" data-label="Grado">{f.grado}</span>
+        <span class="tabla__etapa" data-label="Etapa actual">{f.etapa}</span>
+        <span class={chipClase(f.formulario)} data-label="Formulario">{f.formulario}</span>
+        <span class={chipClase(f.comite)} data-label="Comité">{f.comite}</span>
+      </div>
+    ))
+  }
+</div>
+
+<style>
+  .tabla {
+    padding: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .tabla__fila {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1.4fr 1fr 1fr;
+    gap: 8px;
+    align-items: center;
+    padding: 14px 20px;
+    border-top: 1px solid var(--line);
+  }
+  .tabla__fila--seleccionable {
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .tabla__fila--seleccionable:hover {
+    background: var(--cream);
+  }
+  .tabla__fila--seleccionable:focus-visible {
+    outline: 2px solid var(--terracota);
+    outline-offset: -2px;
+  }
+  .tabla__fila--activa {
+    background: var(--cream);
+    border-left-color: var(--terracota);
+  }
+  .tabla__fila--header {
+    border-top: none;
+    background: var(--cream);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
+  .tabla__nombre {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .tabla__texto {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .tabla__etapa {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+  .chip--neutro {
+    background: #f0efe9;
+    color: var(--text-faint);
+    justify-self: start;
+  }
+  .chip--success,
+  .chip--pending {
+    justify-self: start;
+  }
+
+  @media (max-width: 720px) {
+    .tabla__fila {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 16px 20px;
+    }
+    .tabla__nombre {
+      font-size: 14.5px;
+    }
+    .tabla__fila > span[data-label]::before {
+      content: attr(data-label) ': ';
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-faint);
+    }
+    .tabla__nombre[data-label]::before {
+      content: '';
+    }
+    .tabla__fila.tabla__fila--header {
+      display: none;
+    }
+  }
+</style>

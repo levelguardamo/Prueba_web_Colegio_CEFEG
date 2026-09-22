@@ -1,0 +1,60 @@
+---
+import type { Aspirante } from '../../data/types';
+
+interface Props {
+  formulario: Aspirante['formularioAdmision'];
+}
+const { formulario } = Astro.props;
+const pagado = formulario.estado === 'pagado';
+---
+
+<div class="card">
+  <div class="pago__header">
+    <span class="eyebrow">Formulario de admisión</span>
+    <span class={`chip ${pagado ? 'chip--success' : 'chip--pending'}`}>{pagado ? 'Pagado' : 'Pendiente'}</span>
+  </div>
+  <div class="serif pago__valor">{formulario.valor}</div>
+  <div class="pago__sub">Pagado por el acudiente en la plataforma Q10</div>
+  <div class="pago__sync">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a93a3" stroke-width="2">
+      <path d="M21 2v6h-6M3 22v-6h6M3.5 9A9 9 0 0 1 20 6.3M20.5 15A9 9 0 0 1 4 17.7" />
+    </svg>
+    {formulario.notaSincronizacion}
+  </div>
+</div>
+
+<style>
+  .eyebrow {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--terracota);
+    font-weight: 700;
+  }
+  .pago__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .pago__valor {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+  .pago__sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .pago__sync {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    font-size: 11.5px;
+    color: var(--text-faint);
+  }
+</style>

@@ -1,0 +1,305 @@
+---
+// Panel de detalle de UN aspirante, para el lado derecho del panel de
+// secretaría. Reemplaza el viejo formulario de checkboxes por una línea
+// de progreso: cada paso es un <details> — el punto y la etiqueta son el
+// <summary>, así que darle clic al punto abre la acción de ese paso
+// (subir archivo / marcar recibido en físico / aprobar el cupo).
+//
+// Se renderiza uno de estos por cada aspirante de la tabla, y un script
+// en la página (secretaria/admisiones.astro) muestra/oculta el que
+// corresponda al hacer clic en una fila de la tabla — por eso recibe
+// `activo` y queda oculto con el atributo `hidden` cuando no le toca.
+//
+// TODO(servidor): los checkboxes y "Subir archivo" deben pegar a
+// endpoints propios que actualicen el estado en la base / Q10. Marcar
+// "Comité aprobó el cupo" es lo que debe disparar, del lado del
+// servidor, el mensaje de bienvenida automático (portal + WhatsApp) —
+// ya no hay un botón manual de "enviar bienvenida" en esta pantalla.
+import type { FilaAspirante } from '../../data/mockSecretaria';
+
+interface Props {
+  aspirante: FilaAspirante;
+  index: number;
+  activo: boolean;
+  urlPortalPadre?: string;
+}
+const { aspirante, index, activo, urlPortalPadre } = Astro.props;
+
+// Por defecto se abre el primer paso que aún falta, para que secretaría
+// vea de una qué sigue pendiente.
+const indiceAbierto = aspirante.pasos.findIndex((p) => !p.completado);
+---
+
+<div class="panel card" data-panel-index={index} hidden={!activo}>
+  <div class="panel__header">
+    <div class="eyebrow">Ficha del aspirante</div>
+    <div class="serif panel__nombre">{aspirante.nombre}</div>
+    <div class="panel__grado">{aspirante.grado}</div>
+  </div>
+
+  <div class="progreso">
+    {
+      aspirante.pasos.map((paso, i) => (
+        <details class="paso" open={i === indiceAbierto}>
+          <summary class="paso__resumen">
+            <span class={`paso__dot ${paso.completado ? 'paso__dot--completo' : ''}`}>
+              {paso.completado ? '✓' : i + 1}
+            </span>
+            <span class="paso__texto">
+              <span class="paso__label">{paso.label}</span>
+              <span class="paso__estado">
+                {paso.tipo === 'automatico'
+                  ? paso.completado
+                    ? 'Confirmado por Q10'
+                    : 'Aún no confirma Q10'
+                  : paso.completado
+                    ? 'Completado'
+                    : 'Pendiente'}
+              </span>
+            </span>
+          </summary>
+
+          <div class="paso__acciones">
+            {paso.tipo === 'documento' && (
+              <>
+                <label class="check">
+                  <input type="checkbox" checked={paso.completado} />
+                  Marcar como recibido en físico
+                </label>
+                <button class="btn btn--outline" type="button">
+                  Subir archivo
+                </button>
+              </>
+            )}
+            {paso.tipo === 'automatico' && (
+              <span class={`chip ${paso.completado ? 'chip--success' : 'chip--pending'}`}>
+                {paso.completado ? 'Confirmado automáticamente por Q10' : 'Q10 todavía no confirma el pago'}
+              </span>
+            )}
+            {paso.tipo === 'aprobacion' && (
+              <>
+                <label class="check">
+                  <input type="checkbox" checked={paso.completado} />
+                  Comité aprobó el cupo
+                </label>
+                <p class="paso__nota">
+                  Al marcar esto se envía sola la bienvenida — el popup en el portal del padre y el mensaje
+                  de WhatsApp, sin necesidad de hacerlo a mano desde aquí.
+                </p>
+              </>
+            )}
+          </div>
+        </details>
+      ))
+    }
+  </div>
+
+  <details class="info-padres">
+    <summary class="info-padres__resumen">
+      <span>Información de los padres</span>
+      <span class="info-padres__flecha">▾</span>
+    </summary>
+    <div class="info-padres__cuerpo">
+      <div class="info-padres__fila">
+        <span class="info-padres__label">Acudiente</span>
+        <span>{aspirante.acudiente.nombre}</span>
+      </div>
+      <div class="info-padres__fila">
+        <span class="info-padres__label">Teléfono</span>
+        <span>{aspirante.acudiente.telefono}</span>
+      </div>
+      <div class="info-padres__fila">
+        <span class="info-padres__label">Radicado</span>
+        <span>{aspirante.acudiente.radicado}</span>
+      </div>
+      {urlPortalPadre && (
+        <a class="btn btn--outline info-padres__boton" href={urlPortalPadre} target="_blank" rel="noopener">
+          Ver portal del padre
+        </a>
+      )}
+    </div>
+  </details>
+</div>
+
+<style>
+  .panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+  }
+  /* Astro añade una clase de scope a este selector, lo que le da más
+     especificidad que la regla del navegador `[hidden] { display: none }` —
+     sin esto, el panel se seguiría mostrando aunque tenga el atributo
+     `hidden`. */
+  .panel[hidden] {
+    display: none;
+  }
+  .panel__header {
+    margin-bottom: 20px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--terracota);
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .panel__nombre {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+  .panel__grado {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .progreso {
+    position: relative;
+    padding-left: 26px;
+    margin-bottom: 20px;
+  }
+  .progreso::before {
+    content: '';
+    position: absolute;
+    left: 9px;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    background: var(--line);
+  }
+  .paso {
+    position: relative;
+    margin-bottom: 4px;
+  }
+  .paso + .paso {
+    margin-top: 4px;
+  }
+  .paso__resumen {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+    padding: 8px 6px;
+    border-radius: 6px;
+    list-style: none;
+  }
+  .paso__resumen::-webkit-details-marker {
+    display: none;
+  }
+  .paso__resumen:hover {
+    background: var(--cream);
+  }
+  .paso__dot {
+    position: absolute;
+    left: -26px;
+    top: 8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #5c6c8c;
+    color: #5c6c8c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .paso__dot--completo {
+    background: var(--terracota);
+    border-color: var(--terracota);
+    color: #fff;
+  }
+  .paso__texto {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .paso__label {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .paso__estado {
+    font-size: 11.5px;
+    color: var(--text-faint);
+  }
+  .paso__acciones {
+    padding: 4px 6px 14px 38px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .paso__nota {
+    margin: 6px 0 0;
+    font-size: 11.5px;
+    color: var(--text-faint);
+    line-height: 1.5;
+    width: 100%;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .check input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--terracota);
+  }
+
+  .info-padres {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .info-padres__resumen {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--navy);
+    list-style: none;
+  }
+  .info-padres__resumen::-webkit-details-marker {
+    display: none;
+  }
+  .info-padres__flecha {
+    color: var(--text-faint);
+    transition: transform 0.15s ease;
+  }
+  .info-padres[open] .info-padres__flecha {
+    transform: rotate(180deg);
+  }
+  .info-padres__cuerpo {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .info-padres__fila {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .info-padres__label {
+    color: var(--text-faint);
+  }
+  .info-padres__boton {
+    margin-top: 8px;
+    text-align: center;
+    text-decoration: none;
+  }
+</style>

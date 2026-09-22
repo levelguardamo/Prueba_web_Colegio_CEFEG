@@ -1,0 +1,93 @@
+---
+// Panel interno de secretaría.
+// TODO(servidor): esta ruta debe quedar detrás de autenticación real
+// (usuario/contraseña), a diferencia del acceso ligero de los padres.
+// Los checkboxes y el botón de envío deben pegar a endpoints propios que
+// actualicen el estado en la base / Q10 y disparen el envío de WhatsApp.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ApplicantsTable from '../../components/admisiones/ApplicantsTable.astro';
+import PanelAspirante from '../../components/admisiones/PanelAspirante.astro';
+import { aspirantesTabla } from '../../data/mockSecretaria';
+---
+
+<BaseLayout title="Panel de secretaría">
+  <main class="page">
+    <div class="grid">
+      <ApplicantsTable filas={aspirantesTabla} />
+
+      <div class="grid__right">
+        {
+          aspirantesTabla.map((f, i) => (
+            <PanelAspirante aspirante={f} index={i} activo={i === 0} urlPortalPadre="/admisiones/seguimiento/f3a9c1e2" />
+          ))
+        }
+      </div>
+    </div>
+  </main>
+</BaseLayout>
+
+<script>
+  // Coordina la tabla de aspirantes (izquierda) con su ficha de detalle
+  // (derecha): al hacer clic o navegar con teclado a una fila, se muestra
+  // el <PanelAspirante> que le corresponde y se oculta el resto.
+  const filas = document.querySelectorAll<HTMLElement>('.tabla__fila[data-index]');
+  const paneles = document.querySelectorAll<HTMLElement>('.panel[data-panel-index]');
+
+  function seleccionar(indice: string) {
+    filas.forEach((fila) => {
+      fila.classList.toggle('tabla__fila--activa', fila.dataset.index === indice);
+    });
+    paneles.forEach((panel) => {
+      panel.hidden = panel.dataset.panelIndex !== indice;
+    });
+  }
+
+  filas.forEach((fila) => {
+    fila.addEventListener('click', () => {
+      if (fila.dataset.index !== undefined) seleccionar(fila.dataset.index);
+    });
+    fila.addEventListener('keydown', (evento) => {
+      const e = evento as KeyboardEvent;
+      if ((e.key === 'Enter' || e.key === ' ') && fila.dataset.index !== undefined) {
+        e.preventDefault();
+        seleccionar(fila.dataset.index);
+      }
+    });
+  });
+</script>
+
+<style>
+  .page {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 24px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 48px);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+  }
+  .grid__right {
+    min-height: 0;
+  }
+
+  @media (max-width: 900px) {
+    .page {
+      min-height: 0;
+    }
+    .grid {
+      grid-template-columns: 1fr;
+      flex: none;
+    }
+    .tabla {
+      height: auto;
+    }
+  }
+</style>
