@@ -106,8 +106,10 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
         badge.hidden = resultado === 'pendiente';
         badge.textContent = resultado === 'admitido' ? 'Cupo admitido ✓' : resultado === 'rechazado' ? 'Cupo rechazado' : '';
       }
-      const checkboxAprobar = panel.querySelector<HTMLInputElement>('input[data-accion="aprobar"]');
-      if (checkboxAprobar) checkboxAprobar.checked = resultado === 'admitido';
+      const botonAprobar = panel.querySelector<HTMLButtonElement>('button[data-accion="aprobar"]');
+      if (botonAprobar) botonAprobar.classList.toggle('btn--accion-activo', resultado === 'admitido');
+      const botonRechazar = panel.querySelector<HTMLButtonElement>('button[data-accion="rechazar"]');
+      if (botonRechazar) botonRechazar.classList.toggle('btn--accion-activo', resultado === 'rechazado');
       const dotComite = panel.querySelector<HTMLElement>('details[data-paso-id="comite_aprobo"] [data-campo="dot"]');
       if (dotComite) {
         dotComite.classList.toggle('paso__dot--completo', resultado === 'admitido');
@@ -126,19 +128,46 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     }
   }
 
+  // Los botones "Admitir estudiante" / "Rechazar cupo" solo deben poder
+  // usarse cuando ya se completaron los pasos anteriores (formulario en
+  // físico, pago confirmado por Q10, papelería entregada). Se recalcula
+  // cada vez que cambia un checkbox de esos pasos.
+  function actualizarBotonesComite(panel: HTMLElement) {
+    const detalles = panel.querySelectorAll<HTMLElement>('details[data-paso-id]');
+    let todosPrevios = true;
+    detalles.forEach((detalle) => {
+      if (detalle.dataset.pasoId === 'comite_aprobo') return;
+      const checkbox = detalle.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      const dot = detalle.querySelector<HTMLElement>('[data-campo="dot"]');
+      const completado = checkbox ? checkbox.checked : (dot?.classList.contains('paso__dot--completo') ?? false);
+      if (!completado) todosPrevios = false;
+    });
+    const botonAprobar = panel.querySelector<HTMLButtonElement>('button[data-accion="aprobar"]');
+    const botonRechazar = panel.querySelector<HTMLButtonElement>('button[data-accion="rechazar"]');
+    if (botonAprobar) botonAprobar.disabled = !todosPrevios;
+    if (botonRechazar) botonRechazar.disabled = !todosPrevios;
+    const nota = panel.querySelector<HTMLElement>('[data-campo="nota-bloqueo"]');
+    if (nota) nota.hidden = todosPrevios;
+  }
+
   // Al cargar: si en este navegador ya se guardó algún cambio para un
   // aspirante, se aplica encima de lo que vino del build.
   document.querySelectorAll<HTMLElement>('.panel[data-token]').forEach((panel) => {
     const token = panel.dataset.token;
     if (!token) return;
     const cambios = leerCambios(token);
-    if (!cambios) return;
-    cambios.pasos?.forEach((p) => aplicarPasoADom(token, p.id, p.completado));
-    if (cambios.resultado) aplicarResultadoADom(token, cambios.resultado);
+    if (cambios) {
+      cambios.pasos?.forEach((p) => aplicarPasoADom(token, p.id, p.completado));
+      if (cambios.resultado) aplicarResultadoADom(token, cambios.resultado);
+    }
+    // Se recalcula siempre (haya o no cambios guardados) para que el
+    // estado inicial de los botones quede acorde a lo que se ve en pantalla.
+    actualizarBotonesComite(panel);
   });
 
-  // Checkboxes de pasos tipo "documento" (recibido en físico) y el de
-  // aprobación del comité.
+  // Checkbox del paso "documento" (formulario / papelería recibidos en
+  // físico): además de guardar el cambio, puede habilitar o deshabilitar
+  // los botones de admitir/rechazar del mismo panel.
   document.querySelectorAll<HTMLInputElement>('input[data-token][data-paso-id]').forEach((input) => {
     input.addEventListener('change', () => {
       const token = input.dataset.token!;
@@ -149,16 +178,26 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
 
       actualizarPaso(token, pasosBaseDe(panel), pasoId, completado);
       aplicarPasoADom(token, pasoId, completado);
-
-      if (input.dataset.accion === 'aprobar') {
-        const resultado: ResultadoAdmision = completado ? 'admitido' : 'pendiente';
-        actualizarResultado(token, resultado);
-        aplicarResultadoADom(token, resultado);
-      }
+      actualizarBotonesComite(panel);
     });
   });
 
-  // Botón "Rechazar cupo": la otra salida posible además de aprobar.
+  // Botones "Admitir estudiante" y "Rechazar cupo": las dos salidas
+  // posibles del proceso. Quedan deshabilitados (ver actualizarBotonesComite)
+  // hasta que los pasos anteriores estén completos.
+  document.querySelectorAll<HTMLButtonElement>('button[data-accion="aprobar"]').forEach((boton) => {
+    boton.addEventListener('click', () => {
+      const token = boton.dataset.token!;
+      const panel = boton.closest<HTMLElement>('.panel[data-token]');
+      if (!panel) return;
+
+      actualizarPaso(token, pasosBaseDe(panel), 'comite_aprobo', true);
+      actualizarResultado(token, 'admitido');
+      aplicarPasoADom(token, 'comite_aprobo', true);
+      aplicarResultadoADom(token, 'admitido');
+    });
+  });
+
   document.querySelectorAll<HTMLButtonElement>('button[data-accion="rechazar"]').forEach((boton) => {
     boton.addEventListener('click', () => {
       const token = boton.dataset.token!;

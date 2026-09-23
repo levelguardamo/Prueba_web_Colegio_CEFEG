@@ -28,6 +28,13 @@ const { aspirante, index, activo, urlPortalPadre } = Astro.props;
 // Por defecto se abre el primer paso que aún falta, para que secretaría
 // vea de una qué sigue pendiente.
 const indiceAbierto = aspirante.pasos.findIndex((p) => !p.completado);
+
+// Admitir o rechazar el cupo es la última decisión del proceso — no debe
+// poder tomarse si todavía faltan pasos anteriores (formulario en físico,
+// pago confirmado por Q10, papelería entregada). Mientras falte alguno,
+// los dos botones quedan deshabilitados.
+const pasosPrevios = aspirante.pasos.filter((p) => p.id !== 'comite_aprobo');
+const todosPreviosCompletos = pasosPrevios.every((p) => p.completado);
 ---
 
 <div
@@ -88,22 +95,33 @@ const indiceAbierto = aspirante.pasos.findIndex((p) => !p.completado);
             {paso.tipo === 'aprobacion' && (
               <>
                 <div class="comite-acciones">
-                  <label class="check">
-                    <input
-                      type="checkbox"
-                      checked={paso.completado}
-                      data-token={aspirante.token}
-                      data-paso-id={paso.id}
-                      data-accion="aprobar"
-                    />
-                    Comité aprobó el cupo
-                  </label>
-                  <button class="btn btn--outline btn--rechazar" type="button" data-token={aspirante.token} data-accion="rechazar">
+                  <button
+                    class={`btn btn--outline btn--accion btn--accion-aprobar ${aspirante.resultado === 'admitido' ? 'btn--accion-activo' : ''}`}
+                    type="button"
+                    data-token={aspirante.token}
+                    data-accion="aprobar"
+                    disabled={!todosPreviosCompletos}
+                    title={!todosPreviosCompletos ? 'Completa los pasos anteriores primero' : undefined}
+                  >
+                    Admitir estudiante
+                  </button>
+                  <button
+                    class={`btn btn--outline btn--accion btn--accion-rechazar ${aspirante.resultado === 'rechazado' ? 'btn--accion-activo' : ''}`}
+                    type="button"
+                    data-token={aspirante.token}
+                    data-accion="rechazar"
+                    disabled={!todosPreviosCompletos}
+                    title={!todosPreviosCompletos ? 'Completa los pasos anteriores primero' : undefined}
+                  >
                     Rechazar cupo
                   </button>
                 </div>
+                <p class="paso__nota" data-campo="nota-bloqueo" hidden={todosPreviosCompletos}>
+                  Falta completar los pasos anteriores (formulario en físico, pago y papelería) antes de poder
+                  admitir o rechazar el cupo.
+                </p>
                 <p class="paso__nota">
-                  Al marcar esto se envía sola la bienvenida — el popup en el portal del padre y el mensaje
+                  Al admitir se envía sola la bienvenida — el popup en el portal del padre y el mensaje
                   de WhatsApp, sin necesidad de hacerlo a mano desde aquí. (En esta prueba, el "envío" se
                   simula guardando el estado en este navegador — abre el portal del padre en la misma
                   máquina para verlo reflejado.)
@@ -293,12 +311,33 @@ const indiceAbierto = aspirante.pasos.findIndex((p) => !p.completado);
   .comite-acciones {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
     flex-wrap: wrap;
   }
-  .btn--rechazar {
+  .btn--accion {
     padding: 6px 12px;
     font-size: 12px;
+  }
+  .btn--accion:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  /* Estado "activo": cuando ya se tomó esa decisión, el botón se rellena
+     en vez de quedarse en outline, para que sea obvio cuál de las dos
+     salidas quedó marcada (con el texto siempre legible). */
+  .btn--accion-aprobar.btn--accion-activo {
+    background: var(--success-text);
+    border-color: var(--success-text);
+    color: #fff;
+  }
+  .btn--accion-rechazar.btn--accion-activo {
+    background: var(--terracota);
+    border-color: var(--terracota);
+    color: #fff;
+  }
+  .paso__nota--alerta,
+  [data-campo='nota-bloqueo'] {
+    color: var(--terracota);
   }
 
   .info-padres {
