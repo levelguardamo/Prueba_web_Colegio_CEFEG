@@ -1,5 +1,11 @@
 ---
 // Ventana para agendar la cita de admisión.
+//
+// Simulación para la demo: al confirmar, la cita se guarda en localStorage
+// (nuevosAspirantes.ts) como un aspirante nuevo en la etapa "Cita inicial"
+// — el mismo aspirante aparece en el panel de secretaría, en el mismo
+// navegador, sin recargar nada. No hay servidor real detrás.
+//
 // TODO(servidor): el POST del formulario debe crear la cita en Q10 y
 // disparar la confirmación por WhatsApp (con el enlace mágico si es la
 // primera cita del proceso). Los días habilitados por grado ya vienen de
@@ -53,7 +59,7 @@ const DIAS_CERRADOS = [1, 4];
             <span>Grado al que aspira</span>
             <select name="grado" id="campo-grado">
               {Object.entries(REGLAS_POR_GRADO).map(([key, r]) => (
-                <option value={key} selected={key === gradoSeleccionado}>
+                <option value={key} selected={key === gradoSeleccionado} data-grado-label={r.grado} data-grupal={String(r.grupal)}>
                   {r.grado}
                 </option>
               ))}
@@ -69,8 +75,13 @@ const DIAS_CERRADOS = [1, 4];
           </div>
 
           <input type="hidden" name="fecha" id="campo-fecha" />
+          <input type="hidden" id="campo-fecha-legible" />
 
           <div class="datos-acudiente">
+            <label class="campo">
+              <span>Nombre del niño o niña</span>
+              <input type="text" name="nombreNino" placeholder="Nombre completo del aspirante" required />
+            </label>
             <label class="campo">
               <span>Nombre del acudiente</span>
               <input type="text" name="acudiente" placeholder="Nombre completo" required />
@@ -87,6 +98,27 @@ const DIAS_CERRADOS = [1, 4];
           <div class="ventana__nota">Al confirmar, la cita queda registrada en Q10 y se notifica por WhatsApp</div>
         </div>
       </form>
+
+      <div class="confirmacion" id="confirmacion" hidden>
+        <div class="confirmacion__icono">✓</div>
+        <div class="serif confirmacion__titulo">¡Cita agendada!</div>
+        <p class="confirmacion__texto">
+          Quedó registrada la cita de <strong id="confirmacion-nombre"></strong> para
+          <strong id="confirmacion-grado"></strong>, el <strong id="confirmacion-fecha"></strong>.
+        </p>
+        <div class="confirmacion__radicado">
+          <span>Número de radicado</span>
+          <strong id="confirmacion-radicado"></strong>
+        </div>
+        <p class="confirmacion__nota">
+          Guarda este número — lo vas a necesitar para consultar el proceso más adelante. En un momento
+          secretaría revisa la solicitud y te contacta por WhatsApp al número que registraste.
+        </p>
+        <p class="confirmacion__nota confirmacion__nota--demo">
+          (Esta es una prueba: la cita se guardó en este navegador y ya aparece en el panel de secretaría
+          — no se envió ningún WhatsApp real todavía.)
+        </p>
+      </div>
     </div>
   </main>
 </BaseLayout>
@@ -104,6 +136,7 @@ const DIAS_CERRADOS = [1, 4];
   const horariosLista = document.getElementById('horarios-lista');
   const horariosLabel = document.getElementById('horarios-label');
   const campoFecha = document.getElementById('campo-fecha');
+  const campoFechaLegible = document.getElementById('campo-fecha-legible');
   const btnConfirmar = document.getElementById('btn-confirmar');
 
   let diaSeleccionado = null; // número de día del mes, o null
@@ -156,11 +189,15 @@ const DIAS_CERRADOS = [1, 4];
       horariosLista.appendChild(label);
     });
 
-    const fechaObj = new Date(anio, mes - 1, diaSeleccionado);
+    const diaSemanaCap = DIAS_SEMANA[dow].charAt(0).toUpperCase() + DIAS_SEMANA[dow].slice(1);
     horariosLabel.textContent = `Horarios disponibles · ${DIAS_SEMANA[dow]} ${diaSeleccionado} de ${nombreMes.toLowerCase()}`;
 
     const iso = `${anio}-${String(mes).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}`;
     campoFecha.value = iso;
+    // Fecha en texto plano (sin la hora todavía — se completa con el
+    // horario elegido en el otro script, al confirmar) para que el
+    // aspirante creado en localStorage tenga una fecha legible.
+    campoFechaLegible.value = `${diaSemanaCap} ${diaSeleccionado} de ${nombreMes.toLowerCase()}`;
 
     btnConfirmar.disabled = horarios.length === 0;
   }
@@ -187,6 +224,57 @@ const DIAS_CERRADOS = [1, 4];
   });
 
   repintarCalendario();
+</script>
+
+<script>
+  // --- Confirmar cita: crea el aspirante en localStorage (simulación) ---
+  //
+  // Va en un <script> aparte (sin define:vars) porque necesita un import
+  // normal de nuevosAspirantes.ts, y los scripts con define:vars se
+  // insertan como texto plano, no como módulo — no soportan import.
+  //
+  // El formulario ya no manda un POST de verdad (no hay backend real
+  // detrás todavía, ver el TODO(servidor) arriba): en vez de eso, arma el
+  // aspirante nuevo con crearAspiranteDesdeCita y lo guarda en el
+  // navegador, para que aparezca en el panel de secretaría. Luego muestra
+  // la pantalla de confirmación en vez de recargar la página.
+  import { crearAspiranteDesdeCita } from '../../scripts/nuevosAspirantes';
+
+  const form = document.getElementById('form-cita') as HTMLFormElement;
+  const confirmacion = document.getElementById('confirmacion') as HTMLElement;
+
+  form.addEventListener('submit', (evento) => {
+    evento.preventDefault();
+
+    const datosForm = new FormData(form);
+    const horario = String(datosForm.get('horario') ?? '');
+    const fechaBase = String(datosForm.get('fecha') ?? '');
+    if (!fechaBase) return; // sin fecha elegida, no hay nada que confirmar
+
+    const opcionGrado = (document.getElementById('campo-grado') as HTMLSelectElement).selectedOptions[0];
+    const gradoLabel = opcionGrado?.dataset.gradoLabel ?? '';
+    const grupal = opcionGrado?.dataset.grupal === 'true';
+
+    const fechaLegibleBase = (document.getElementById('campo-fecha-legible') as HTMLInputElement).value;
+    const fechaLegible = horario ? `${fechaLegibleBase} · ${horario}` : fechaLegibleBase;
+
+    const aspirante = crearAspiranteDesdeCita({
+      nombreNino: String(datosForm.get('nombreNino') ?? ''),
+      acudiente: String(datosForm.get('acudiente') ?? ''),
+      telefono: String(datosForm.get('telefono') ?? ''),
+      gradoLabel,
+      fechaLegible,
+      grupal,
+    });
+
+    (document.getElementById('confirmacion-nombre') as HTMLElement).textContent = aspirante.nombre;
+    (document.getElementById('confirmacion-grado') as HTMLElement).textContent = aspirante.grado;
+    (document.getElementById('confirmacion-fecha') as HTMLElement).textContent = fechaLegible;
+    (document.getElementById('confirmacion-radicado') as HTMLElement).textContent = aspirante.radicado;
+
+    form.hidden = true;
+    confirmacion.hidden = false;
+  });
 </script>
 
 <style>
@@ -334,5 +422,74 @@ const DIAS_CERRADOS = [1, 4];
   #btn-confirmar:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .confirmacion {
+    flex: 1;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 64px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 14px;
+  }
+  .confirmacion[hidden] {
+    display: none;
+  }
+  .confirmacion__icono {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--success-bg, #e4f1e7);
+    color: var(--success-text, #2f7d4f);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 700;
+  }
+  .confirmacion__titulo {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+  .confirmacion__texto {
+    margin: 0;
+    font-size: 14.5px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .confirmacion__radicado {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--cream);
+    border-radius: 6px;
+    padding: 14px 24px;
+    margin-top: 6px;
+  }
+  .confirmacion__radicado span {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    font-weight: 700;
+  }
+  .confirmacion__radicado strong {
+    font-size: 19px;
+    color: var(--navy);
+    font-family: var(--font-serif);
+  }
+  .confirmacion__nota {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--text-faint);
+    line-height: 1.5;
+  }
+  .confirmacion__nota--demo {
+    font-style: italic;
   }
 </style>
