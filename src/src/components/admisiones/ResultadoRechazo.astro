@@ -1,0 +1,66 @@
+---
+// A diferencia del popup de admitido (WhatsappPreview.astro), el
+// resultado "no admitido" se muestra como una tarjeta normal dentro de
+// la página, no como un popup emergente — así lo pidió el colegio, para
+// que una mala noticia no se sienta como una alerta intrusiva.
+//
+// TODO(servidor): igual que con la bienvenida, el envío real por
+// WhatsApp se dispara desde el panel de secretaría, no desde aquí.
+import type { Aspirante } from '../../data/types';
+
+interface Props {
+  mensaje: Aspirante['mensajeRechazo'];
+}
+const { mensaje } = Astro.props;
+---
+
+<div class="card resultado-rechazo">
+  <div class="eyebrow">Resultado del proceso de admisión</div>
+  <div class="resultado-rechazo__contenido">
+    <img class="resultado-rechazo__imagen" src="/images/admisiones/resultado-rechazado.jpg" alt="Resultado admisión: no aprobada" />
+    <p class="resultado-rechazo__texto">{mensaje.texto}</p>
+  </div>
+  <div class="resultado-rechazo__nota">
+    {mensaje.enviado
+      ? 'Este mensaje ya se envió por WhatsApp.'
+      : 'Este mensaje se envía por WhatsApp al número que registraste al agendar la cita.'}
+  </div>
+</div>
+
+<style>
+  .eyebrow {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--terracota);
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .resultado-rechazo__contenido {
+    background: #f3eeea;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .resultado-rechazo__imagen {
+    display: block;
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(22, 41, 75, 0.12);
+  }
+  .resultado-rechazo__texto {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .resultado-rechazo__nota {
+    margin-top: 14px;
+    font-size: 11.5px;
+    color: var(--text-faint);
+  }
+</style>

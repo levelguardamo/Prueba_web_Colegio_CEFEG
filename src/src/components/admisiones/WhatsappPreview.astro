@@ -1,0 +1,159 @@
+---
+// Popup de bienvenida del PADRE: solo existe cuando el comité ya admitió
+// al aspirante, y se muestra en primer plano apenas carga el portal de
+// seguimiento (una sola vez por visita). Es informativo nada más — no
+// tiene botón de envío, porque ese disparo es una acción de secretaría,
+// no del acudiente.
+//
+// TODO(servidor): el envío real por WhatsApp se dispara desde el panel
+// de secretaría (src/pages/secretaria/admisiones.astro) en el momento en
+// que marcan "Comité aprobó el cupo", usando aspirante.telefonoAcudiente
+// (capturado al agendar la cita). Hoy en secretaría ese botón abre un
+// enlace wa.me con el mensaje precargado y alguien confirma "enviar" en
+// WhatsApp; para que salga solo, sin ese clic manual, hay que conectar
+// la API de WhatsApp Business (o un proveedor como Twilio / 360dialog).
+import type { Aspirante } from '../../data/types';
+
+interface Props {
+  mensaje: Aspirante['mensajeBienvenida'];
+  admitido: boolean;
+  token?: string;
+}
+const { mensaje, admitido, token } = Astro.props;
+// Antes este popup solo existía en el DOM cuando `admitido` era true al
+// momento del build — así que si secretaría aprobaba el cupo después
+// (simulado con localStorage), no había nada que "mostrar": el nodo ni
+// siquiera se había generado. Ahora siempre se genera, oculto con
+// `hidden` según el resultado del build, y el script de la página
+// (seguimiento/[token].astro) lo puede des-ocultar si localStorage dice
+// que el resultado cambió a "admitido" en este navegador.
+---
+
+<div class="bienvenida-popup" id="bienvenida-popup" data-token={token} hidden={!admitido}>
+  <div class="bienvenida-popup__fondo" data-cerrar />
+  <div class="bienvenida-popup__caja" role="dialog" aria-label="Mensaje de bienvenida">
+    <button class="bienvenida-popup__cerrar" type="button" data-cerrar aria-label="Cerrar">
+      ✕
+    </button>
+    <div class="eyebrow">¡Cupo admitido! 🎉</div>
+    <div class="wa">
+      <img class="wa__imagen" src="/images/admisiones/resultado-admitido.jpg" alt="Resultado admisión: aprobada" />
+      <p class="wa__texto" data-campo="mensaje-texto">{mensaje.texto}</p>
+    </div>
+    <div class="wa__nota">
+      {mensaje.enviado
+        ? 'Ya recibiste este mensaje por WhatsApp.'
+        : 'Este mensaje ya va en camino por WhatsApp al número que registraste al agendar la cita.'}
+    </div>
+  </div>
+</div>
+
+<style>
+  .bienvenida-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .bienvenida-popup[hidden] {
+    display: none;
+  }
+  .bienvenida-popup__fondo {
+    position: absolute;
+    inset: 0;
+    background: rgba(22, 41, 75, 0.55);
+    backdrop-filter: blur(2px);
+  }
+  .bienvenida-popup__caja {
+    position: relative;
+    background: #fff;
+    border-radius: 12px;
+    padding: 28px 28px 24px;
+    width: 100%;
+    max-width: 650px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(22, 41, 75, 0.35);
+    animation: aparecer 0.2s ease;
+  }
+  @keyframes aparecer {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .bienvenida-popup__cerrar {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    font-size: 15px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--terracota);
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .wa {
+    background: #eaf3ed;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .wa__imagen {
+    width: 100%;
+    display: block;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(22, 41, 75, 0.12);
+  }
+  .wa__texto {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .wa__nota {
+    margin-top: 14px;
+    font-size: 11.5px;
+    color: var(--text-faint);
+    text-align: center;
+  }
+</style>
+
+<script>
+  // Se abre solo (front and center) apenas carga la página, una sola vez
+  // por sesión de navegador para no fastidiar si el acudiente recarga.
+  const popup = document.getElementById('bienvenida-popup');
+  if (popup) {
+    const yaVisto = sessionStorage.getItem('bienvenida-popup-vista');
+    if (yaVisto) {
+      popup.hidden = true;
+    }
+    const cerrar = () => {
+      popup.hidden = true;
+      try {
+        sessionStorage.setItem('bienvenida-popup-vista', '1');
+      } catch {
+        /* almacenamiento no disponible: no pasa nada, se puede volver a ver */
+      }
+    };
+    popup.querySelectorAll('[data-cerrar]').forEach((el) => el.addEventListener('click', cerrar));
+  }
+</script>

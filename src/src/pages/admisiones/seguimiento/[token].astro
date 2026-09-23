@@ -1,0 +1,292 @@
+---
+// Portal de seguimiento del acudiente. Accedido por el enlace mágico
+// enviado por WhatsApp: /admisiones/seguimiento/<token>
+//
+// TODO(servidor): esta página necesita SSR (output: 'server' en
+// astro.config.mjs + un adapter) para resolver el token en cada visita
+// en vez de generar solo las rutas de getStaticPaths. Por ahora,
+// getStaticPaths sirve para tener la página funcionando con datos de
+// ejemplo mientras se define esa conexión.
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Stepper from '../../../components/admisiones/Stepper.astro';
+import DocumentChecklist from '../../../components/admisiones/DocumentChecklist.astro';
+import AppointmentCard from '../../../components/admisiones/AppointmentCard.astro';
+import PaymentCard from '../../../components/admisiones/PaymentCard.astro';
+import WhatsappPreview from '../../../components/admisiones/WhatsappPreview.astro';
+import ResultadoRechazo from '../../../components/admisiones/ResultadoRechazo.astro';
+import { aspirantesEjemplo, buscarAspirantePorToken } from '../../../data/mockData';
+import { construirEtapas } from '../../../data/types';
+
+export function getStaticPaths() {
+  return aspirantesEjemplo.map((a) => ({ params: { token: a.token } }));
+}
+
+const { token } = Astro.params;
+const aspirante = buscarAspirantePorToken(token!);
+
+if (!aspirante) {
+  return Astro.redirect('/404');
+}
+
+const etapas = construirEtapas(aspirante.etapaActual);
+const rechazado = aspirante.resultado === 'rechazado';
+---
+
+<BaseLayout title="Portal de seguimiento">
+  <main class="page" data-token={aspirante.token}>
+    <header class="page__header">
+      <div class="page__eyebrow">
+        <div class="page__eyebrow-bar" />
+        <span>Admisiones</span>
+      </div>
+      <h1 class="serif page__title">Portal de seguimiento de matrícula</h1>
+      <p class="page__subtitle">
+        Consulta en tiempo real el estado de inscripción de tu hijo o hija, gestiona los documentos
+        requeridos y agenda tu cita de admisión.
+      </p>
+    </header>
+
+    <!--
+      Antes esta sección renderizaba SOLO una de las dos variantes (rechazado
+      o normal) según el resultado al momento del build — así que si
+      secretaría cambiaba el resultado después (simulado con localStorage),
+      no había nada en el DOM para mostrar la otra variante. Ahora las dos
+      se generan siempre, cada una oculta con `hidden` según el resultado
+      del build, y el script de abajo decide cuál mostrar según lo que diga
+      localStorage en este navegador.
+    -->
+    <div class="grid grid--rechazado" data-vista="rechazado" hidden={!rechazado}>
+      <div class="grid__left">
+        <div class="card card--navy">
+          <div class="resumen">
+            <div>
+              <div class="resumen__label">Aspirante</div>
+              <div class="serif resumen__nombre">{aspirante.nombre}</div>
+              <div class="resumen__grado">
+                Grado solicitado: <strong>{aspirante.grado}</strong> · {aspirante.jornada}
+              </div>
+            </div>
+            <div class="resumen__radicado">
+              <div class="resumen__label">Radicado</div>
+              <div class="serif">{aspirante.radicado}</div>
+            </div>
+          </div>
+          <div class="resultado-badge">No fue posible asignar el cupo</div>
+        </div>
+
+        <ResultadoRechazo mensaje={aspirante.mensajeRechazo} />
+      </div>
+    </div>
+
+    <div class="grid" data-vista="normal" hidden={rechazado}>
+      <div class="grid__left">
+        <div class="card card--navy">
+          <div class="resumen">
+            <div>
+              <div class="resumen__label">Aspirante</div>
+              <div class="serif resumen__nombre">{aspirante.nombre}</div>
+              <div class="resumen__grado">
+                Grado solicitado: <strong>{aspirante.grado}</strong> · {aspirante.jornada}
+              </div>
+            </div>
+            <div class="resumen__radicado">
+              <div class="resumen__label">Radicado</div>
+              <div class="serif">{aspirante.radicado}</div>
+            </div>
+          </div>
+          <div class="resumen__stepper">
+            <Stepper etapas={etapas} />
+          </div>
+        </div>
+
+        <DocumentChecklist documentos={aspirante.documentos} />
+      </div>
+
+      <div class="grid__right">
+        {aspirante.proximaCita && <AppointmentCard cita={aspirante.proximaCita} />}
+        <PaymentCard formulario={aspirante.formularioAdmision} />
+      </div>
+    </div>
+
+    <div class="integraciones">
+      <span>Este módulo se sincroniza con:</span>
+      <span class="integraciones__badge">Q10</span>
+      <span class="integraciones__badge">Aliado</span>
+      <span class="integraciones__badge">WhatsApp Business</span>
+    </div>
+  </main>
+
+  <WhatsappPreview
+    mensaje={aspirante.mensajeBienvenida}
+    admitido={aspirante.resultado === 'admitido'}
+    token={aspirante.token}
+  />
+</BaseLayout>
+
+<script>
+  import { leerCambios } from '../../../scripts/estadoAspirantes';
+
+  // --- Interconexión con secretaría (simulada con localStorage) ---
+  //
+  // Esta es la mitad "lectora" de la maqueta: secretaría guarda sus
+  // cambios en localStorage (ver secretaria/admisiones.astro), y esta
+  // página, al cargar, revisa si hay algún cambio guardado para el token
+  // de esta URL y ajusta la vista en consecuencia. Solo funciona
+  // probando ambas páginas en el mismo navegador — ver el TODO(servidor)
+  // en estadoAspirantes.ts para la versión real con backend.
+  const main = document.querySelector<HTMLElement>('.page[data-token]');
+  const token = main?.dataset.token;
+
+  if (token) {
+    const cambios = leerCambios(token);
+    const resultado = cambios?.resultado;
+
+    if (resultado) {
+      const vistaRechazado = document.querySelector<HTMLElement>('[data-vista="rechazado"]');
+      const vistaNormal = document.querySelector<HTMLElement>('[data-vista="normal"]');
+      if (vistaRechazado) vistaRechazado.hidden = resultado !== 'rechazado';
+      if (vistaNormal) vistaNormal.hidden = resultado === 'rechazado';
+
+      const popup = document.getElementById('bienvenida-popup') as HTMLElement | null;
+      if (popup) {
+        const yaVisto = sessionStorage.getItem('bienvenida-popup-vista');
+        popup.hidden = resultado !== 'admitido' || Boolean(yaVisto);
+      }
+    }
+  }
+</script>
+
+<style>
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 24px 64px;
+  }
+  .page__header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 32px;
+  }
+  .page__eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--terracota);
+  }
+  .page__eyebrow-bar {
+    width: 28px;
+    height: 3px;
+    background: var(--terracota);
+  }
+  .page__title {
+    margin: 0;
+    font-size: 34px;
+    font-weight: 700;
+    color: var(--navy);
+    line-height: 1.2;
+  }
+  .page__subtitle {
+    margin: 0;
+    font-size: 15px;
+    color: var(--text-muted);
+    max-width: 620px;
+    line-height: 1.6;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  /* Igual que en PanelAspirante.astro: el selector con scope de Astro le
+     gana en especificidad a la regla nativa `[hidden]{display:none}`, así
+     que sin esto la vista oculta se seguiría mostrando (como grid). */
+  .grid[hidden] {
+    display: none;
+  }
+  .grid__left,
+  .grid__right {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+  }
+  .grid--rechazado {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 640px;
+  }
+  .resultado-badge {
+    margin-top: 24px;
+    display: inline-block;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .card--navy {
+    background: var(--navy);
+    color: #fff;
+    padding: 28px 32px;
+  }
+  .resumen {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .resumen__label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #9fb0cb;
+    margin-bottom: 6px;
+  }
+  .resumen__nombre {
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .resumen__grado {
+    font-size: 13px;
+    color: #c4cede;
+    margin-top: 4px;
+  }
+  .resumen__radicado {
+    text-align: right;
+  }
+  .resumen__stepper {
+    margin-top: 32px;
+  }
+
+  .integraciones {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-top: 36px;
+  }
+  .integraciones__badge {
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--line);
+    color: #3b4457;
+  }
+
+  @media (max-width: 860px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

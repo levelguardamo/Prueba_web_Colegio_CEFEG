@@ -1,0 +1,446 @@
+---
+// Panel interno de secretaría.
+// TODO(servidor): esta ruta debe quedar detrás de autenticación real
+// (usuario/contraseña), a diferencia del acceso ligero de los padres.
+// Los checkboxes y el botón de envío deben pegar a endpoints propios que
+// actualicen el estado en la base / Q10 y disparen el envío de WhatsApp.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ApplicantsTable from '../../components/admisiones/ApplicantsTable.astro';
+import PanelAspirante from '../../components/admisiones/PanelAspirante.astro';
+import { aspirantesTabla } from '../../data/mockSecretaria';
+---
+
+<BaseLayout title="Panel de secretaría">
+  <main class="page">
+    <div class="grid">
+      <ApplicantsTable filas={aspirantesTabla} />
+
+      <div class="grid__right">
+        {
+          aspirantesTabla.map((f, i) => (
+            <PanelAspirante aspirante={f} index={i} activo={i === 0} urlPortalPadre={`/admisiones/seguimiento/${f.token}`} />
+          ))
+        }
+      </div>
+    </div>
+  </main>
+</BaseLayout>
+
+<script>
+  import type { Aspirante, PasoManual, ResultadoAdmision } from '../../data/types';
+  import { ETAPAS_ORDEN } from '../../data/types';
+  import { actualizarPaso, actualizarResultado, leerCambios } from '../../scripts/estadoAspirantes';
+  import { leerNuevosAspirantes } from '../../scripts/nuevosAspirantes';
+
+  // --- Aspirantes agendados desde /admisiones/cita (nacidos en el navegador) ---
+  //
+  // Estos NO vienen del build (mockData.ts), así que no tienen su fila ni
+  // su ficha generadas por ApplicantsTable.astro / PanelAspirante.astro.
+  // Se agregan aquí, apenas carga la página, leyendo lo que haya en
+  // localStorage — por eso el resto del script usa delegación de eventos
+  // (escucha en el documento, no en cada fila/botón) en vez de recorrer
+  // los elementos uno por uno: así lo agregado aquí queda conectado igual
+  // que lo que vino del build, sin tener que cablear nada aparte.
+  //
+  // Limitación de esta demo: estos aspirantes no tienen página propia en
+  // /admisiones/seguimiento/<token> (esa ruta solo existe, prerenderizada,
+  // para los tokens que ya estaban en mockData.ts al hacer build) — por
+  // eso su ficha no trae el botón "Ver portal del padre".
+
+  // Astro "escopa" los estilos de ApplicantsTable.astro y PanelAspirante.astro
+  // agregando un atributo data-astro-cid-XXXXX a cada elemento que generan
+  // en el build, y esa misma cadena se le pega a sus selectores CSS. Los
+  // elementos que armamos aquí a mano con JS no nacen con ese atributo, así
+  // que sin esto se verían sin ningún estilo de esos dos componentes (solo
+  // con lo que trae global.css). Se copia del primer elemento real que ya
+  // existe en la página, así funciona sin importar cómo cambie el hash de
+  // un build a otro.
+  function copiarCidAstro(referenciaSelector: string, contenedor: HTMLElement) {
+    const referencia = document.querySelector(referenciaSelector);
+    if (!referencia) return;
+    const atributoCid = Array.from(referencia.attributes).find((attr) => attr.name.startsWith('data-astro-cid-'));
+    if (!atributoCid) return;
+    contenedor.setAttribute(atributoCid.name, '');
+    contenedor.querySelectorAll('*').forEach((el) => el.setAttribute(atributoCid.name, ''));
+  }
+
+  function escapeHtml(s: string) {
+    const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return s.replace(/[&<>"']/g, (c) => map[c]);
+  }
+  function chipClase(valor: string) {
+    if (valor === 'Pagado' || valor === 'Aprobado') return 'chip chip--success';
+    if (valor === 'Pendiente') return 'chip chip--pending';
+    if (valor === 'Rechazado') return 'chip chip--rechazado';
+    return 'chip chip--neutro';
+  }
+  function etapaLabelDe(a: Aspirante) {
+    return ETAPAS_ORDEN.find((e) => e.id === a.etapaActual)?.label ?? a.etapaActual;
+  }
+  function formularioLabelDe(a: Aspirante) {
+    const paso = a.pasos.find((p) => p.id === 'formulario_pagado');
+    return paso?.completado ? 'Pagado' : 'Pendiente';
+  }
+  function comiteLabelDe(a: Aspirante) {
+    if (a.resultado === 'admitido') return 'Aprobado';
+    if (a.resultado === 'rechazado') return 'Rechazado';
+    const paso = a.pasos.find((p) => p.id === 'comite_aprobo');
+    return paso?.completado ? 'Aprobado' : 'Pendiente';
+  }
+
+  function crearFila(a: Aspirante, indice: number): HTMLElement {
+    const fila = document.createElement('div');
+    fila.className = 'tabla__fila tabla__fila--seleccionable';
+    fila.dataset.index = String(indice);
+    fila.dataset.token = a.token;
+    fila.tabIndex = 0;
+    fila.setAttribute('role', 'button');
+    fila.innerHTML = `
+      <span class="tabla__nombre" data-label="Aspirante">${escapeHtml(a.nombre)}</span>
+      <span class="tabla__texto" data-label="Grado">${escapeHtml(a.grado)}</span>
+      <span class="tabla__etapa" data-label="Etapa actual">${escapeHtml(etapaLabelDe(a))}</span>
+      <span class="${chipClase(formularioLabelDe(a))}" data-label="Formulario" data-campo="formulario">${formularioLabelDe(a)}</span>
+      <span class="${chipClase(comiteLabelDe(a))}" data-label="Comité" data-campo="comite">${comiteLabelDe(a)}</span>
+    `;
+    copiarCidAstro('.tabla__fila[data-index]', fila);
+    return fila;
+  }
+
+  function crearPanel(a: Aspirante, indice: number): HTMLElement {
+    const indiceAbierto = a.pasos.findIndex((p) => !p.completado);
+    const pasosPrevios = a.pasos.filter((p) => p.id !== 'comite_aprobo');
+    const todosPreviosCompletos = pasosPrevios.every((p) => p.completado);
+
+    const pasosHtml = a.pasos
+      .map((paso, i) => {
+        let acciones = '';
+        if (paso.tipo === 'documento') {
+          // "formulario_pagado" solo llega aquí como 'documento' para un
+          // aspirante nacido en esta demo (ver la nota en
+          // nuevosAspirantes.ts) — necesita su propio texto, porque en
+          // producción ese paso lo confirma Q10 solo.
+          const etiqueta =
+            paso.id === 'formulario_pagado' ? 'Marcar como pagado (simula la confirmación de Q10)' : 'Marcar como recibido en físico';
+          acciones = `
+            <label class="check">
+              <input type="checkbox" ${paso.completado ? 'checked' : ''} data-token="${a.token}" data-paso-id="${paso.id}">
+              ${etiqueta}
+            </label>
+            ${paso.id === 'formulario_pagado' ? '' : '<button class="btn btn--outline" type="button">Subir archivo</button>'}
+          `;
+        } else if (paso.tipo === 'automatico') {
+          acciones = `<span class="chip ${paso.completado ? 'chip--success' : 'chip--pending'}">${
+            paso.completado ? 'Confirmado automáticamente por Q10' : 'Q10 todavía no confirma el pago'
+          }</span>`;
+        } else if (paso.tipo === 'aprobacion') {
+          acciones = `
+            <div class="comite-acciones">
+              <button
+                class="btn btn--outline btn--accion btn--accion-aprobar ${a.resultado === 'admitido' ? 'btn--accion-activo' : ''}"
+                type="button" data-token="${a.token}" data-accion="aprobar" ${!todosPreviosCompletos ? 'disabled' : ''}
+              >Admitir estudiante</button>
+              <button
+                class="btn btn--outline btn--accion btn--accion-rechazar ${a.resultado === 'rechazado' ? 'btn--accion-activo' : ''}"
+                type="button" data-token="${a.token}" data-accion="rechazar" ${!todosPreviosCompletos ? 'disabled' : ''}
+              >Rechazar cupo</button>
+            </div>
+            <p class="paso__nota" data-campo="nota-bloqueo" ${todosPreviosCompletos ? 'hidden' : ''}>
+              Falta completar los pasos anteriores (formulario en físico, pago y papelería) antes de poder
+              admitir o rechazar el cupo.
+            </p>
+            <p class="paso__nota">
+              Al admitir se envía sola la bienvenida — el popup en el portal del padre y el mensaje de
+              WhatsApp, sin necesidad de hacerlo a mano desde aquí. (En esta prueba, el "envío" se simula
+              guardando el estado en este navegador.)
+            </p>
+          `;
+        }
+        return `
+          <details class="paso" data-paso-id="${paso.id}" ${i === indiceAbierto ? 'open' : ''}>
+            <summary class="paso__resumen">
+              <span class="paso__dot ${paso.completado ? 'paso__dot--completo' : ''}" data-campo="dot" data-numero="${i + 1}">${
+                paso.completado ? '✓' : i + 1
+              }</span>
+              <span class="paso__texto">
+                <span class="paso__label">${escapeHtml(paso.label)}</span>
+                <span class="paso__estado" data-campo="estado">${
+                  paso.tipo === 'automatico'
+                    ? paso.completado
+                      ? 'Confirmado por Q10'
+                      : 'Aún no confirma Q10'
+                    : paso.completado
+                      ? 'Completado'
+                      : 'Pendiente'
+                }</span>
+              </span>
+            </summary>
+            <div class="paso__acciones">${acciones}</div>
+          </details>
+        `;
+      })
+      .join('');
+
+    const panel = document.createElement('div');
+    panel.className = 'panel card';
+    panel.dataset.panelIndex = String(indice);
+    panel.dataset.token = a.token;
+    panel.dataset.pasosBase = JSON.stringify(a.pasos);
+    panel.hidden = true;
+    panel.innerHTML = `
+      <div class="panel__header">
+        <div class="eyebrow">Ficha del aspirante</div>
+        <div class="serif panel__nombre">${escapeHtml(a.nombre)}</div>
+        <div class="panel__grado">${escapeHtml(a.grado)}</div>
+        <div class="panel__resultado" data-campo="resultado-badge" ${a.resultado === 'pendiente' ? 'hidden' : ''}>
+          ${a.resultado === 'admitido' ? 'Cupo admitido ✓' : a.resultado === 'rechazado' ? 'Cupo rechazado' : ''}
+        </div>
+      </div>
+      <div class="progreso">${pasosHtml}</div>
+      <details class="info-padres">
+        <summary class="info-padres__resumen">
+          <span>Información de los padres</span>
+          <span class="info-padres__flecha">▾</span>
+        </summary>
+        <div class="info-padres__cuerpo">
+          <div class="info-padres__fila"><span class="info-padres__label">Acudiente</span><span>${escapeHtml(a.acudiente.nombre)}</span></div>
+          <div class="info-padres__fila"><span class="info-padres__label">Teléfono</span><span>${escapeHtml(a.acudiente.telefono)}</span></div>
+          <div class="info-padres__fila"><span class="info-padres__label">Radicado</span><span>${escapeHtml(a.acudiente.radicado)}</span></div>
+          <p class="paso__nota">Agendado desde el formulario público — en esta prueba no tiene un portal de
+          seguimiento propio (eso necesita el backend real).</p>
+        </div>
+      </details>
+    `;
+    copiarCidAstro('.panel[data-panel-index]', panel);
+    return panel;
+  }
+
+  const tabla = document.querySelector('.tabla');
+  const gridRight = document.querySelector('.grid__right');
+  let siguienteIndice = document.querySelectorAll('.tabla__fila[data-index]').length;
+
+  leerNuevosAspirantes().forEach((a) => {
+    tabla?.appendChild(crearFila(a, siguienteIndice));
+    gridRight?.appendChild(crearPanel(a, siguienteIndice));
+    siguienteIndice++;
+  });
+
+  // Coordina la tabla de aspirantes (izquierda) con su ficha de detalle
+  // (derecha): al hacer clic o navegar con teclado a una fila, se muestra
+  // el panel que le corresponde y se oculta el resto. Con delegación de
+  // eventos en vez de un listener por fila, para que también funcione con
+  // las filas agregadas arriba.
+  function seleccionar(indice: string) {
+    document.querySelectorAll<HTMLElement>('.tabla__fila[data-index]').forEach((fila) => {
+      fila.classList.toggle('tabla__fila--activa', fila.dataset.index === indice);
+    });
+    document.querySelectorAll<HTMLElement>('.panel[data-panel-index]').forEach((panel) => {
+      panel.hidden = panel.dataset.panelIndex !== indice;
+    });
+  }
+
+  tabla?.addEventListener('click', (evento) => {
+    const fila = (evento.target as HTMLElement).closest<HTMLElement>('.tabla__fila[data-index]');
+    if (fila?.dataset.index !== undefined) seleccionar(fila.dataset.index);
+  });
+  tabla?.addEventListener('keydown', (evento) => {
+    const e = evento as KeyboardEvent;
+    const fila = (e.target as HTMLElement).closest<HTMLElement>('.tabla__fila[data-index]');
+    if (!fila || fila.dataset.index === undefined) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      seleccionar(fila.dataset.index);
+    }
+  });
+
+  // --- Interconexión con el portal del padre (simulada con localStorage) ---
+  //
+  // Esto es una MAQUETA de lo que hará el backend real: cada cambio que
+  // hace secretaría aquí se guarda en el navegador, y el portal del padre
+  // (/admisiones/seguimiento/<token>) lee esos mismos cambios al abrirse.
+  // Solo funciona probando ambas páginas en el mismo navegador — para que
+  // funcione entre dispositivos distintos hace falta el backend real
+  // (ver TODO(servidor) en estadoAspirantes.ts).
+
+  function aplicarPasoADom(token: string, pasoId: PasoManual['id'], completado: boolean) {
+    const detalle = document.querySelector<HTMLDetailsElement>(
+      `.panel[data-token="${token}"] details[data-paso-id="${pasoId}"]`
+    );
+    if (detalle) {
+      const checkbox = detalle.querySelector<HTMLInputElement>(`input[data-paso-id="${pasoId}"]`);
+      if (checkbox) checkbox.checked = completado;
+      const dot = detalle.querySelector<HTMLElement>('[data-campo="dot"]');
+      if (dot) {
+        dot.classList.toggle('paso__dot--completo', completado);
+        dot.textContent = completado ? '✓' : (dot.dataset.numero ?? '');
+      }
+      const estado = detalle.querySelector<HTMLElement>('[data-campo="estado"]');
+      if (estado) estado.textContent = completado ? 'Completado' : 'Pendiente';
+    }
+    if (pasoId === 'formulario_pagado') {
+      const chip = document.querySelector<HTMLElement>(`.tabla__fila[data-token="${token}"] [data-campo="formulario"]`);
+      if (chip) {
+        chip.textContent = completado ? 'Pagado' : 'Pendiente';
+        chip.className = `chip ${completado ? 'chip--success' : 'chip--pending'}`;
+      }
+    }
+  }
+
+  function aplicarResultadoADom(token: string, resultado: ResultadoAdmision) {
+    const chipComite = document.querySelector<HTMLElement>(`.tabla__fila[data-token="${token}"] [data-campo="comite"]`);
+    if (chipComite) {
+      const texto = resultado === 'admitido' ? 'Aprobado' : resultado === 'rechazado' ? 'Rechazado' : 'Pendiente';
+      const clase = resultado === 'admitido' ? 'chip--success' : resultado === 'rechazado' ? 'chip--rechazado' : 'chip--pending';
+      chipComite.textContent = texto;
+      chipComite.className = `chip ${clase}`;
+    }
+    const panel = document.querySelector<HTMLElement>(`.panel[data-token="${token}"]`);
+    if (panel) {
+      const badge = panel.querySelector<HTMLElement>('[data-campo="resultado-badge"]');
+      if (badge) {
+        badge.hidden = resultado === 'pendiente';
+        badge.textContent = resultado === 'admitido' ? 'Cupo admitido ✓' : resultado === 'rechazado' ? 'Cupo rechazado' : '';
+      }
+      const botonAprobar = panel.querySelector<HTMLButtonElement>('button[data-accion="aprobar"]');
+      if (botonAprobar) botonAprobar.classList.toggle('btn--accion-activo', resultado === 'admitido');
+      const botonRechazar = panel.querySelector<HTMLButtonElement>('button[data-accion="rechazar"]');
+      if (botonRechazar) botonRechazar.classList.toggle('btn--accion-activo', resultado === 'rechazado');
+      const dotComite = panel.querySelector<HTMLElement>('details[data-paso-id="comite_aprobo"] [data-campo="dot"]');
+      if (dotComite) {
+        dotComite.classList.toggle('paso__dot--completo', resultado === 'admitido');
+        dotComite.textContent = resultado === 'admitido' ? '✓' : (dotComite.dataset.numero ?? '');
+      }
+      const estadoComite = panel.querySelector<HTMLElement>('details[data-paso-id="comite_aprobo"] [data-campo="estado"]');
+      if (estadoComite) estadoComite.textContent = resultado === 'admitido' ? 'Completado' : 'Pendiente';
+    }
+  }
+
+  function pasosBaseDe(panel: HTMLElement): PasoManual[] {
+    try {
+      return JSON.parse(panel.dataset.pasosBase ?? '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  // Los botones "Admitir estudiante" / "Rechazar cupo" solo deben poder
+  // usarse cuando ya se completaron los pasos anteriores (formulario en
+  // físico, pago confirmado por Q10, papelería entregada). Se recalcula
+  // cada vez que cambia un checkbox de esos pasos.
+  function actualizarBotonesComite(panel: HTMLElement) {
+    const detalles = panel.querySelectorAll<HTMLElement>('details[data-paso-id]');
+    let todosPrevios = true;
+    detalles.forEach((detalle) => {
+      if (detalle.dataset.pasoId === 'comite_aprobo') return;
+      const checkbox = detalle.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      const dot = detalle.querySelector<HTMLElement>('[data-campo="dot"]');
+      const completado = checkbox ? checkbox.checked : (dot?.classList.contains('paso__dot--completo') ?? false);
+      if (!completado) todosPrevios = false;
+    });
+    const botonAprobar = panel.querySelector<HTMLButtonElement>('button[data-accion="aprobar"]');
+    const botonRechazar = panel.querySelector<HTMLButtonElement>('button[data-accion="rechazar"]');
+    if (botonAprobar) botonAprobar.disabled = !todosPrevios;
+    if (botonRechazar) botonRechazar.disabled = !todosPrevios;
+    const nota = panel.querySelector<HTMLElement>('[data-campo="nota-bloqueo"]');
+    if (nota) nota.hidden = todosPrevios;
+  }
+
+  // Al cargar: si en este navegador ya se guardó algún cambio para un
+  // aspirante, se aplica encima de lo que vino del build.
+  document.querySelectorAll<HTMLElement>('.panel[data-token]').forEach((panel) => {
+    const token = panel.dataset.token;
+    if (!token) return;
+    const cambios = leerCambios(token);
+    if (cambios) {
+      cambios.pasos?.forEach((p) => aplicarPasoADom(token, p.id, p.completado));
+      if (cambios.resultado) aplicarResultadoADom(token, cambios.resultado);
+    }
+    // Se recalcula siempre (haya o no cambios guardados) para que el
+    // estado inicial de los botones quede acorde a lo que se ve en pantalla.
+    actualizarBotonesComite(panel);
+  });
+
+  // Checkbox del paso "documento" (formulario / papelería recibidos en
+  // físico): además de guardar el cambio, puede habilitar o deshabilitar
+  // los botones de admitir/rechazar del mismo panel. Delegado en el
+  // documento para que también funcione con los paneles agregados arriba.
+  document.addEventListener('change', (evento) => {
+    const input = (evento.target as HTMLElement).closest<HTMLInputElement>('input[data-token][data-paso-id]');
+    if (!input) return;
+
+    const token = input.dataset.token!;
+    const pasoId = input.dataset.pasoId as PasoManual['id'];
+    const completado = input.checked;
+    const panel = input.closest<HTMLElement>('.panel[data-token]');
+    if (!panel) return;
+
+    actualizarPaso(token, pasosBaseDe(panel), pasoId, completado);
+    aplicarPasoADom(token, pasoId, completado);
+    actualizarBotonesComite(panel);
+  });
+
+  // Botones "Admitir estudiante" y "Rechazar cupo": las dos salidas
+  // posibles del proceso. Quedan deshabilitados (ver actualizarBotonesComite)
+  // hasta que los pasos anteriores estén completos.
+  document.addEventListener('click', (evento) => {
+    const objetivo = evento.target as HTMLElement;
+
+    const botonAprobar = objetivo.closest<HTMLButtonElement>('button[data-accion="aprobar"]');
+    if (botonAprobar) {
+      const token = botonAprobar.dataset.token!;
+      const panel = botonAprobar.closest<HTMLElement>('.panel[data-token]');
+      if (!panel) return;
+      actualizarPaso(token, pasosBaseDe(panel), 'comite_aprobo', true);
+      actualizarResultado(token, 'admitido');
+      aplicarPasoADom(token, 'comite_aprobo', true);
+      aplicarResultadoADom(token, 'admitido');
+      return;
+    }
+
+    const botonRechazar = objetivo.closest<HTMLButtonElement>('button[data-accion="rechazar"]');
+    if (botonRechazar) {
+      const token = botonRechazar.dataset.token!;
+      const panel = botonRechazar.closest<HTMLElement>('.panel[data-token]');
+      if (!panel) return;
+      actualizarPaso(token, pasosBaseDe(panel), 'comite_aprobo', false);
+      actualizarResultado(token, 'rechazado');
+      aplicarPasoADom(token, 'comite_aprobo', false);
+      aplicarResultadoADom(token, 'rechazado');
+    }
+  });
+</script>
+
+<style>
+  .page {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 24px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 48px);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+  }
+  .grid__right {
+    min-height: 0;
+  }
+
+  @media (max-width: 900px) {
+    .page {
+      min-height: 0;
+    }
+    .grid {
+      grid-template-columns: 1fr;
+      flex: none;
+    }
+    .tabla {
+      height: auto;
+    }
+  }
+</style>

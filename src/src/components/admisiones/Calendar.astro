@@ -1,0 +1,124 @@
+---
+// Calendario simple de un mes. Recibe qué días de la semana están
+// habilitados para el grado elegido, y bloquea siempre lunes y jueves.
+//
+// TODO(servidor): "diasHabilitados" y "diaSeleccionado" deberían venir
+// de una consulta real a la disponibilidad en Q10 para ese grado y mes.
+interface Props {
+  anio: number;
+  mes: number; // 1-12
+  nombreMes: string;
+  diasHabilitados: number[]; // 0=domingo … 6=sábado, día de la semana permitido para el grado
+  diaSeleccionado?: number;
+}
+const { anio, mes, nombreMes, diasHabilitados, diaSeleccionado } = Astro.props;
+
+const DIAS_CERRADOS = [1, 4]; // lunes y jueves: nunca se atiende
+const ETIQUETAS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+// Reordenamos para que la semana empiece en lunes (L M X J V S D)
+const ETIQUETAS_LUNES = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+const primerDia = new Date(anio, mes - 1, 1);
+const ultimoDia = new Date(anio, mes, 0).getDate();
+// getDay(): 0=domingo..6=sábado → lo convertimos a 0=lunes..6=domingo
+const offset = (primerDia.getDay() + 6) % 7;
+
+const celdas: {
+  num: number | null;
+  dow: number | null; // 0..6, domingo=0 — se usa en el cliente para recalcular al cambiar de grado
+  tipo: 'blank' | 'cerrado' | 'no-grado' | 'disponible' | 'seleccionado';
+}[] = [];
+for (let i = 0; i < offset; i++) celdas.push({ num: null, dow: null, tipo: 'blank' });
+for (let d = 1; d <= ultimoDia; d++) {
+  const diaSemana = new Date(anio, mes - 1, d).getDay(); // 0..6, domingo=0
+  let tipo: (typeof celdas)[number]['tipo'];
+  if (DIAS_CERRADOS.includes(diaSemana)) tipo = 'cerrado';
+  else if (!diasHabilitados.includes(diaSemana)) tipo = 'no-grado';
+  else tipo = d === diaSeleccionado ? 'seleccionado' : 'disponible';
+  celdas.push({ num: d, dow: diaSemana, tipo });
+}
+---
+
+<div class="calendario" data-anio={anio} data-mes={mes}>
+  <div class="calendario__header">
+    <span class="calendario__hint">Selecciona una fecha disponible</span>
+    <span class="serif calendario__mes">{nombreMes} {anio}</span>
+  </div>
+  <div class="calendario__grid" id="calendario-grid">
+    {ETIQUETAS_LUNES.map((et) => <span class="calendario__etiqueta">{et}</span>)}
+    {
+      celdas.map((c) => (
+        <div
+          class={`calendario__celda calendario__celda--${c.tipo}`}
+          data-day={c.num ?? undefined}
+          data-dow={c.dow ?? undefined}
+        >
+          {c.num ?? ''}
+        </div>
+      ))
+    }
+  </div>
+</div>
+
+<style>
+  .calendario__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  .calendario__hint {
+    font-size: 14px;
+    font-weight: 700;
+    color: #3b4457;
+  }
+  .calendario__mes {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+  .calendario__grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+    text-align: center;
+  }
+  .calendario__etiqueta {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-faint);
+    padding-bottom: 8px;
+  }
+  .calendario__celda {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 17px;
+    font-weight: 500;
+  }
+  .calendario__celda--blank {
+    visibility: hidden;
+  }
+  .calendario__celda--cerrado {
+    color: #d9afa0;
+    text-decoration: line-through;
+  }
+  .calendario__celda--no-grado {
+    color: #c7c3b6;
+  }
+  .calendario__celda--disponible {
+    background: var(--pending-bg);
+    border: 1px solid #e3b9a6;
+    color: var(--terracota);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .calendario__celda--seleccionado {
+    background: var(--navy);
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+  }
+</style>
