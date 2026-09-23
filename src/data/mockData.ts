@@ -8,7 +8,7 @@ export const aspirantesEjemplo: Aspirante[] = [
   {
     token: 'f3a9c1e2',
     radicado: '#ADM-2026-0184',
-    nombre: '[Nombre del niño/a]',
+    nombre: 'Valentina Ríos',
     grado: 'Transición',
     jornada: 'Jornada única',
     etapaActual: 'capellania_comite',
@@ -34,7 +34,7 @@ export const aspirantesEjemplo: Aspirante[] = [
     },
     mensajeBienvenida: {
       texto: construirMensajeBienvenida({
-        nombre: '[Nombre del niño/a]',
+        nombre: 'Valentina',
         grado: 'Transición',
         tipoProceso: 'nuevo',
       }),
@@ -44,6 +44,13 @@ export const aspirantesEjemplo: Aspirante[] = [
       texto: construirMensajeRechazo({ tipoProceso: 'nuevo' }),
       enviado: false,
     },
+    acudiente: { nombre: 'Carolina Ríos', telefono: '+57 300 000 0000', radicado: '#ADM-2026-0184' },
+    pasos: [
+      { id: 'formulario_fisico', label: 'Formulario general recibido en físico', tipo: 'documento', completado: true },
+      { id: 'formulario_pagado', label: 'Formulario de admisión pagado (Q10)', tipo: 'automatico', completado: true },
+      { id: 'papeleria_comite', label: 'Papelería entregada para comité', tipo: 'documento', completado: false },
+      { id: 'comite_aprobo', label: 'Comité aprobó el cupo', tipo: 'aprobacion', completado: false },
+    ],
   },
   {
     token: 'a8d21bd0',
@@ -78,6 +85,13 @@ export const aspirantesEjemplo: Aspirante[] = [
       texto: '',
       enviado: false,
     },
+    acudiente: { nombre: 'Juliana Ortiz', telefono: '+57 300 123 4567', radicado: '#ADM-2026-0107' },
+    pasos: [
+      { id: 'formulario_fisico', label: 'Formulario general recibido en físico', tipo: 'documento', completado: true },
+      { id: 'formulario_pagado', label: 'Formulario de admisión pagado (Q10)', tipo: 'automatico', completado: true },
+      { id: 'papeleria_comite', label: 'Papelería entregada para comité', tipo: 'documento', completado: true },
+      { id: 'comite_aprobo', label: 'Comité aprobó el cupo', tipo: 'aprobacion', completado: true },
+    ],
   },
   {
     token: 'c47e9f31',
@@ -111,6 +125,13 @@ export const aspirantesEjemplo: Aspirante[] = [
       texto: construirMensajeRechazo({ tipoProceso: 'nuevo' }),
       enviado: false,
     },
+    acudiente: { nombre: 'Andrés Pérez', telefono: '+57 300 987 6543', radicado: '#ADM-2026-0142' },
+    pasos: [
+      { id: 'formulario_fisico', label: 'Formulario general recibido en físico', tipo: 'documento', completado: true },
+      { id: 'formulario_pagado', label: 'Formulario de admisión pagado (Q10)', tipo: 'automatico', completado: true },
+      { id: 'papeleria_comite', label: 'Papelería entregada para comité', tipo: 'documento', completado: true },
+      { id: 'comite_aprobo', label: 'Comité aprobó el cupo', tipo: 'aprobacion', completado: false },
+    ],
   },
 ];
 

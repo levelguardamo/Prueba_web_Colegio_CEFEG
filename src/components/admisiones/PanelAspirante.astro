@@ -15,10 +15,10 @@
 // "Comité aprobó el cupo" es lo que debe disparar, del lado del
 // servidor, el mensaje de bienvenida automático (portal + WhatsApp) —
 // ya no hay un botón manual de "enviar bienvenida" en esta pantalla.
-import type { FilaAspirante } from '../../data/mockSecretaria';
+import type { Aspirante } from '../../data/types';
 
 interface Props {
-  aspirante: FilaAspirante;
+  aspirante: Aspirante;
   index: number;
   activo: boolean;
   urlPortalPadre?: string;
@@ -30,24 +30,33 @@ const { aspirante, index, activo, urlPortalPadre } = Astro.props;
 const indiceAbierto = aspirante.pasos.findIndex((p) => !p.completado);
 ---
 
-<div class="panel card" data-panel-index={index} hidden={!activo}>
+<div
+  class="panel card"
+  data-panel-index={index}
+  data-token={aspirante.token}
+  data-pasos-base={JSON.stringify(aspirante.pasos)}
+  hidden={!activo}
+>
   <div class="panel__header">
     <div class="eyebrow">Ficha del aspirante</div>
     <div class="serif panel__nombre">{aspirante.nombre}</div>
     <div class="panel__grado">{aspirante.grado}</div>
+    <div class="panel__resultado" data-campo="resultado-badge" hidden={aspirante.resultado === 'pendiente'}>
+      {aspirante.resultado === 'admitido' ? 'Cupo admitido ✓' : aspirante.resultado === 'rechazado' ? 'Cupo rechazado' : ''}
+    </div>
   </div>
 
   <div class="progreso">
     {
       aspirante.pasos.map((paso, i) => (
-        <details class="paso" open={i === indiceAbierto}>
+        <details class="paso" data-paso-id={paso.id} open={i === indiceAbierto}>
           <summary class="paso__resumen">
-            <span class={`paso__dot ${paso.completado ? 'paso__dot--completo' : ''}`}>
+            <span class={`paso__dot ${paso.completado ? 'paso__dot--completo' : ''}`} data-campo="dot" data-numero={i + 1}>
               {paso.completado ? '✓' : i + 1}
             </span>
             <span class="paso__texto">
               <span class="paso__label">{paso.label}</span>
-              <span class="paso__estado">
+              <span class="paso__estado" data-campo="estado">
                 {paso.tipo === 'automatico'
                   ? paso.completado
                     ? 'Confirmado por Q10'
@@ -63,7 +72,7 @@ const indiceAbierto = aspirante.pasos.findIndex((p) => !p.completado);
             {paso.tipo === 'documento' && (
               <>
                 <label class="check">
-                  <input type="checkbox" checked={paso.completado} />
+                  <input type="checkbox" checked={paso.completado} data-token={aspirante.token} data-paso-id={paso.id} />
                   Marcar como recibido en físico
                 </label>
                 <button class="btn btn--outline" type="button">
@@ -78,13 +87,26 @@ const indiceAbierto = aspirante.pasos.findIndex((p) => !p.completado);
             )}
             {paso.tipo === 'aprobacion' && (
               <>
-                <label class="check">
-                  <input type="checkbox" checked={paso.completado} />
-                  Comité aprobó el cupo
-                </label>
+                <div class="comite-acciones">
+                  <label class="check">
+                    <input
+                      type="checkbox"
+                      checked={paso.completado}
+                      data-token={aspirante.token}
+                      data-paso-id={paso.id}
+                      data-accion="aprobar"
+                    />
+                    Comité aprobó el cupo
+                  </label>
+                  <button class="btn btn--outline btn--rechazar" type="button" data-token={aspirante.token} data-accion="rechazar">
+                    Rechazar cupo
+                  </button>
+                </div>
                 <p class="paso__nota">
                   Al marcar esto se envía sola la bienvenida — el popup en el portal del padre y el mensaje
-                  de WhatsApp, sin necesidad de hacerlo a mano desde aquí.
+                  de WhatsApp, sin necesidad de hacerlo a mano desde aquí. (En esta prueba, el "envío" se
+                  simula guardando el estado en este navegador — abre el portal del padre en la misma
+                  máquina para verlo reflejado.)
                 </p>
               </>
             )}
@@ -155,6 +177,19 @@ const indiceAbierto = aspirante.pasos.findIndex((p) => !p.completado);
     font-size: 12.5px;
     color: var(--text-muted);
     margin-top: 2px;
+  }
+  .panel__resultado {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    background: var(--pending-bg, #f7e3dd);
+    color: var(--terracota);
+  }
+  .panel__resultado[hidden] {
+    display: none;
   }
 
   .progreso {
@@ -254,6 +289,16 @@ const indiceAbierto = aspirante.pasos.findIndex((p) => !p.completado);
     width: 16px;
     height: 16px;
     accent-color: var(--terracota);
+  }
+  .comite-acciones {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .btn--rechazar {
+    padding: 6px 12px;
+    font-size: 12px;
   }
 
   .info-padres {

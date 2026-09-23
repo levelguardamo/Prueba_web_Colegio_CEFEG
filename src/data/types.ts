@@ -24,6 +24,16 @@ export interface DocumentoChecklist {
 
 export type ResultadoAdmision = 'pendiente' | 'admitido' | 'rechazado';
 
+export interface PasoManual {
+  id: 'formulario_fisico' | 'formulario_pagado' | 'papeleria_comite' | 'comite_aprobo';
+  label: string;
+  // 'documento': se puede subir un archivo y/o marcar como recibido en físico.
+  // 'automatico': lo confirma Q10 solo, aquí no se toca nada a mano.
+  // 'aprobacion': el paso final — al marcarlo se dispara la bienvenida automática.
+  tipo: 'documento' | 'automatico' | 'aprobacion';
+  completado: boolean;
+}
+
 export interface Aspirante {
   token: string; // identificador aleatorio para el enlace mágico
   radicado: string;
@@ -54,6 +64,17 @@ export interface Aspirante {
     texto: string;
     enviado: boolean;
   };
+  // Datos que usa el panel de secretaría (src/pages/secretaria/admisiones.astro)
+  // para mostrar la ficha del aspirante y su línea de progreso. Viven en el
+  // mismo registro que el resto porque secretaría y el portal del padre
+  // deben hablar del MISMO aspirante — antes eran dos listas separadas
+  // (mockData.ts y mockSecretaria.ts) que podían quedar desincronizadas.
+  acudiente: {
+    nombre: string;
+    telefono: string;
+    radicado: string;
+  };
+  pasos: PasoManual[];
 }
 
 export const ETAPAS_ORDEN: { id: EtapaId; label: string }[] = [

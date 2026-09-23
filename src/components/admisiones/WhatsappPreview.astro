@@ -17,32 +17,36 @@ import type { Aspirante } from '../../data/types';
 interface Props {
   mensaje: Aspirante['mensajeBienvenida'];
   admitido: boolean;
+  token?: string;
 }
-const { mensaje, admitido } = Astro.props;
+const { mensaje, admitido, token } = Astro.props;
+// Antes este popup solo existía en el DOM cuando `admitido` era true al
+// momento del build — así que si secretaría aprobaba el cupo después
+// (simulado con localStorage), no había nada que "mostrar": el nodo ni
+// siquiera se había generado. Ahora siempre se genera, oculto con
+// `hidden` según el resultado del build, y el script de la página
+// (seguimiento/[token].astro) lo puede des-ocultar si localStorage dice
+// que el resultado cambió a "admitido" en este navegador.
 ---
 
-{
-  admitido && (
-    <div class="bienvenida-popup" id="bienvenida-popup">
-      <div class="bienvenida-popup__fondo" data-cerrar />
-      <div class="bienvenida-popup__caja" role="dialog" aria-label="Mensaje de bienvenida">
-        <button class="bienvenida-popup__cerrar" type="button" data-cerrar aria-label="Cerrar">
-          ✕
-        </button>
-        <div class="eyebrow">¡Cupo admitido! 🎉</div>
-        <div class="wa">
-          <img class="wa__imagen" src="/images/admisiones/resultado-admitido.jpg" alt="Resultado admisión: aprobada" />
-          <p class="wa__texto">{mensaje.texto}</p>
-        </div>
-        <div class="wa__nota">
-          {mensaje.enviado
-            ? 'Ya recibiste este mensaje por WhatsApp.'
-            : 'Este mensaje ya va en camino por WhatsApp al número que registraste al agendar la cita.'}
-        </div>
-      </div>
+<div class="bienvenida-popup" id="bienvenida-popup" data-token={token} hidden={!admitido}>
+  <div class="bienvenida-popup__fondo" data-cerrar />
+  <div class="bienvenida-popup__caja" role="dialog" aria-label="Mensaje de bienvenida">
+    <button class="bienvenida-popup__cerrar" type="button" data-cerrar aria-label="Cerrar">
+      ✕
+    </button>
+    <div class="eyebrow">¡Cupo admitido! 🎉</div>
+    <div class="wa">
+      <img class="wa__imagen" src="/images/admisiones/resultado-admitido.jpg" alt="Resultado admisión: aprobada" />
+      <p class="wa__texto" data-campo="mensaje-texto">{mensaje.texto}</p>
     </div>
-  )
-}
+    <div class="wa__nota">
+      {mensaje.enviado
+        ? 'Ya recibiste este mensaje por WhatsApp.'
+        : 'Este mensaje ya va en camino por WhatsApp al número que registraste al agendar la cita.'}
+    </div>
+  </div>
+</div>
 
 <style>
   .bienvenida-popup {

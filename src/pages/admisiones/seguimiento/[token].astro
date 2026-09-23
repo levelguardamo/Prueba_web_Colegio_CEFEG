@@ -33,7 +33,7 @@ const rechazado = aspirante.resultado === 'rechazado';
 ---
 
 <BaseLayout title="Portal de seguimiento">
-  <main class="page">
+  <main class="page" data-token={aspirante.token}>
     <header class="page__header">
       <div class="page__eyebrow">
         <div class="page__eyebrow-bar" />
@@ -46,62 +46,67 @@ const rechazado = aspirante.resultado === 'rechazado';
       </p>
     </header>
 
-    {
-      rechazado ? (
-        <div class="grid grid--rechazado">
-          <div class="grid__left">
-            <div class="card card--navy">
-              <div class="resumen">
-                <div>
-                  <div class="resumen__label">Aspirante</div>
-                  <div class="serif resumen__nombre">{aspirante.nombre}</div>
-                  <div class="resumen__grado">
-                    Grado solicitado: <strong>{aspirante.grado}</strong> · {aspirante.jornada}
-                  </div>
-                </div>
-                <div class="resumen__radicado">
-                  <div class="resumen__label">Radicado</div>
-                  <div class="serif">{aspirante.radicado}</div>
-                </div>
-              </div>
-              <div class="resultado-badge">No fue posible asignar el cupo</div>
-            </div>
-
-            <ResultadoRechazo mensaje={aspirante.mensajeRechazo} />
-          </div>
-        </div>
-      ) : (
-        <div class="grid">
-          <div class="grid__left">
-            <div class="card card--navy">
-              <div class="resumen">
-                <div>
-                  <div class="resumen__label">Aspirante</div>
-                  <div class="serif resumen__nombre">{aspirante.nombre}</div>
-                  <div class="resumen__grado">
-                    Grado solicitado: <strong>{aspirante.grado}</strong> · {aspirante.jornada}
-                  </div>
-                </div>
-                <div class="resumen__radicado">
-                  <div class="resumen__label">Radicado</div>
-                  <div class="serif">{aspirante.radicado}</div>
-                </div>
-              </div>
-              <div class="resumen__stepper">
-                <Stepper etapas={etapas} />
+    <!--
+      Antes esta sección renderizaba SOLO una de las dos variantes (rechazado
+      o normal) según el resultado al momento del build — así que si
+      secretaría cambiaba el resultado después (simulado con localStorage),
+      no había nada en el DOM para mostrar la otra variante. Ahora las dos
+      se generan siempre, cada una oculta con `hidden` según el resultado
+      del build, y el script de abajo decide cuál mostrar según lo que diga
+      localStorage en este navegador.
+    -->
+    <div class="grid grid--rechazado" data-vista="rechazado" hidden={!rechazado}>
+      <div class="grid__left">
+        <div class="card card--navy">
+          <div class="resumen">
+            <div>
+              <div class="resumen__label">Aspirante</div>
+              <div class="serif resumen__nombre">{aspirante.nombre}</div>
+              <div class="resumen__grado">
+                Grado solicitado: <strong>{aspirante.grado}</strong> · {aspirante.jornada}
               </div>
             </div>
-
-            <DocumentChecklist documentos={aspirante.documentos} />
+            <div class="resumen__radicado">
+              <div class="resumen__label">Radicado</div>
+              <div class="serif">{aspirante.radicado}</div>
+            </div>
           </div>
+          <div class="resultado-badge">No fue posible asignar el cupo</div>
+        </div>
 
-          <div class="grid__right">
-            {aspirante.proximaCita && <AppointmentCard cita={aspirante.proximaCita} />}
-            <PaymentCard formulario={aspirante.formularioAdmision} />
+        <ResultadoRechazo mensaje={aspirante.mensajeRechazo} />
+      </div>
+    </div>
+
+    <div class="grid" data-vista="normal" hidden={rechazado}>
+      <div class="grid__left">
+        <div class="card card--navy">
+          <div class="resumen">
+            <div>
+              <div class="resumen__label">Aspirante</div>
+              <div class="serif resumen__nombre">{aspirante.nombre}</div>
+              <div class="resumen__grado">
+                Grado solicitado: <strong>{aspirante.grado}</strong> · {aspirante.jornada}
+              </div>
+            </div>
+            <div class="resumen__radicado">
+              <div class="resumen__label">Radicado</div>
+              <div class="serif">{aspirante.radicado}</div>
+            </div>
+          </div>
+          <div class="resumen__stepper">
+            <Stepper etapas={etapas} />
           </div>
         </div>
-      )
-    }
+
+        <DocumentChecklist documentos={aspirante.documentos} />
+      </div>
+
+      <div class="grid__right">
+        {aspirante.proximaCita && <AppointmentCard cita={aspirante.proximaCita} />}
+        <PaymentCard formulario={aspirante.formularioAdmision} />
+      </div>
+    </div>
 
     <div class="integraciones">
       <span>Este módulo se sincroniza con:</span>
@@ -111,8 +116,45 @@ const rechazado = aspirante.resultado === 'rechazado';
     </div>
   </main>
 
-  <WhatsappPreview mensaje={aspirante.mensajeBienvenida} admitido={aspirante.resultado === 'admitido'} />
+  <WhatsappPreview
+    mensaje={aspirante.mensajeBienvenida}
+    admitido={aspirante.resultado === 'admitido'}
+    token={aspirante.token}
+  />
 </BaseLayout>
+
+<script>
+  import { leerCambios } from '../../../scripts/estadoAspirantes';
+
+  // --- Interconexión con secretaría (simulada con localStorage) ---
+  //
+  // Esta es la mitad "lectora" de la maqueta: secretaría guarda sus
+  // cambios en localStorage (ver secretaria/admisiones.astro), y esta
+  // página, al cargar, revisa si hay algún cambio guardado para el token
+  // de esta URL y ajusta la vista en consecuencia. Solo funciona
+  // probando ambas páginas en el mismo navegador — ver el TODO(servidor)
+  // en estadoAspirantes.ts para la versión real con backend.
+  const main = document.querySelector<HTMLElement>('.page[data-token]');
+  const token = main?.dataset.token;
+
+  if (token) {
+    const cambios = leerCambios(token);
+    const resultado = cambios?.resultado;
+
+    if (resultado) {
+      const vistaRechazado = document.querySelector<HTMLElement>('[data-vista="rechazado"]');
+      const vistaNormal = document.querySelector<HTMLElement>('[data-vista="normal"]');
+      if (vistaRechazado) vistaRechazado.hidden = resultado !== 'rechazado';
+      if (vistaNormal) vistaNormal.hidden = resultado === 'rechazado';
+
+      const popup = document.getElementById('bienvenida-popup') as HTMLElement | null;
+      if (popup) {
+        const yaVisto = sessionStorage.getItem('bienvenida-popup-vista');
+        popup.hidden = resultado !== 'admitido' || Boolean(yaVisto);
+      }
+    }
+  }
+</script>
 
 <style>
   .page {
@@ -161,6 +203,12 @@ const rechazado = aspirante.resultado === 'rechazado';
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
     gap: 24px;
     align-items: start;
+  }
+  /* Igual que en PanelAspirante.astro: el selector con scope de Astro le
+     gana en especificidad a la regla nativa `[hidden]{display:none}`, así
+     que sin esto la vista oculta se seguiría mostrando (como grid). */
+  .grid[hidden] {
+    display: none;
   }
   .grid__left,
   .grid__right {

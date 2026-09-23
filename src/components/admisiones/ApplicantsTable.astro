@@ -1,15 +1,35 @@
 ---
-import type { FilaAspirante } from '../../data/mockSecretaria';
+import type { Aspirante } from '../../data/types';
+import { ETAPAS_ORDEN } from '../../data/types';
 
 interface Props {
-  filas: FilaAspirante[];
+  filas: Aspirante[];
 }
 const { filas } = Astro.props;
 
 function chipClase(valor: string) {
   if (valor === 'Pagado' || valor === 'Aprobado') return 'chip chip--success';
   if (valor === 'Pendiente') return 'chip chip--pending';
+  if (valor === 'Rechazado') return 'chip chip--rechazado';
   return 'chip chip--neutro';
+}
+
+// La etapa, el estado del formulario y el estado del comité que se ven en
+// la tabla se calculan a partir de los mismos datos que usa el portal del
+// padre (etapaActual, pasos, resultado) — así los dos paneles siempre
+// cuentan la misma historia, en vez de tener cada uno su propio texto fijo.
+function etapaLabel(a: Aspirante) {
+  return ETAPAS_ORDEN.find((e) => e.id === a.etapaActual)?.label ?? a.etapaActual;
+}
+function formularioLabel(a: Aspirante) {
+  const paso = a.pasos.find((p) => p.id === 'formulario_pagado');
+  return paso?.completado ? 'Pagado' : 'Pendiente';
+}
+function comiteLabel(a: Aspirante) {
+  if (a.resultado === 'admitido') return 'Aprobado';
+  if (a.resultado === 'rechazado') return 'Rechazado';
+  const paso = a.pasos.find((p) => p.id === 'comite_aprobo');
+  return paso?.completado ? 'Aprobado' : 'Pendiente';
 }
 ---
 
@@ -23,12 +43,18 @@ function chipClase(valor: string) {
   </div>
   {
     filas.map((f, i) => (
-      <div class={`tabla__fila tabla__fila--seleccionable ${i === 0 ? 'tabla__fila--activa' : ''}`} data-index={i} tabindex="0" role="button">
+      <div
+        class={`tabla__fila tabla__fila--seleccionable ${i === 0 ? 'tabla__fila--activa' : ''}`}
+        data-index={i}
+        data-token={f.token}
+        tabindex="0"
+        role="button"
+      >
         <span class="tabla__nombre" data-label="Aspirante">{f.nombre}</span>
         <span class="tabla__texto" data-label="Grado">{f.grado}</span>
-        <span class="tabla__etapa" data-label="Etapa actual">{f.etapa}</span>
-        <span class={chipClase(f.formulario)} data-label="Formulario">{f.formulario}</span>
-        <span class={chipClase(f.comite)} data-label="Comité">{f.comite}</span>
+        <span class="tabla__etapa" data-label="Etapa actual">{etapaLabel(f)}</span>
+        <span class={chipClase(formularioLabel(f))} data-label="Formulario" data-campo="formulario">{formularioLabel(f)}</span>
+        <span class={chipClase(comiteLabel(f))} data-label="Comité" data-campo="comite">{comiteLabel(f)}</span>
       </div>
     ))
   }
@@ -51,6 +77,15 @@ function chipClase(valor: string) {
     padding: 14px 20px;
     border-top: 1px solid var(--line);
   }
+  .tabla__fila--header {
+    border-top: none;
+    background: var(--cream);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
   .tabla__fila--seleccionable {
     cursor: pointer;
     border-left: 3px solid transparent;
@@ -66,15 +101,6 @@ function chipClase(valor: string) {
   .tabla__fila--activa {
     background: var(--cream);
     border-left-color: var(--terracota);
-  }
-  .tabla__fila--header {
-    border-top: none;
-    background: var(--cream);
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
   }
   .tabla__nombre {
     font-size: 13.5px;
@@ -93,6 +119,11 @@ function chipClase(valor: string) {
   .chip--neutro {
     background: #f0efe9;
     color: var(--text-faint);
+    justify-self: start;
+  }
+  .chip--rechazado {
+    background: #f7e3dd;
+    color: #a13d1f;
     justify-self: start;
   }
   .chip--success,
