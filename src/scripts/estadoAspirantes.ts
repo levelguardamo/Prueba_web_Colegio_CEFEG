@@ -37,6 +37,11 @@ export interface CambiosAspirante {
   // como oculto en ESTE navegador, para que ni su fila ni su ficha se
   // sigan mostrando.
   eliminado?: boolean;
+  // Nombre del archivo "subido" para cada paso de tipo documento (no hay
+  // backend real todavía — ver el TODO(servidor) de más abajo — así que
+  // solo se guarda el nombre del archivo elegido, para mostrarlo en la
+  // ficha, y no el archivo en sí).
+  archivos?: Partial<Record<PasoManual['id'], string>>;
 }
 
 type EstadoGuardado = Record<string, CambiosAspirante>;
@@ -106,5 +111,14 @@ export function actualizarDatos(token: string, datos: DatosEditables) {
 export function marcarEliminado(token: string) {
   const todo = leerTodo();
   todo[token] = { ...todo[token], eliminado: true };
+  guardarTodo(todo);
+}
+
+// Guarda el nombre del archivo "subido" para un paso puntual (ver la nota
+// en CambiosAspirante.archivos — no hay backend real todavía, así que solo
+// se recuerda el nombre para mostrarlo en la ficha).
+export function actualizarArchivo(token: string, pasoId: PasoManual['id'], nombreArchivo: string) {
+  const todo = leerTodo();
+  todo[token] = { ...todo[token], archivos: { ...todo[token]?.archivos, [pasoId]: nombreArchivo } };
   guardarTodo(todo);
 }

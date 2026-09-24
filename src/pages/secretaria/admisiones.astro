@@ -35,6 +35,7 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     actualizarResultado,
     actualizarDatos,
     marcarEliminado,
+    actualizarArchivo,
     leerCambios,
   } from '../../scripts/estadoAspirantes';
   import { leerNuevosAspirantes } from '../../scripts/nuevosAspirantes';
@@ -108,6 +109,10 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
       <span class="tabla__etapa" data-label="Etapa actual">${escapeHtml(etapaLabelDe(a))}</span>
       <span class="${chipClase(formularioLabelDe(a))}" data-label="Formulario" data-campo="formulario">${formularioLabelDe(a)}</span>
       <span class="${chipClase(comiteLabelDe(a))}" data-label="Comité" data-campo="comite">${comiteLabelDe(a)}</span>
+      <span class="tabla__acciones">
+        <button class="tabla__accion-btn" type="button" data-token="${a.token}" data-accion="editar" title="Editar datos">✎</button>
+        <button class="tabla__accion-btn tabla__accion-btn--peligro" type="button" data-token="${a.token}" data-accion="eliminar" title="Eliminar aspirante">🗑</button>
+      </span>
     `;
     copiarCidAstro('.tabla__fila[data-index]', fila);
     return fila;
@@ -133,12 +138,27 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
               <input type="checkbox" ${paso.completado ? 'checked' : ''} data-token="${a.token}" data-paso-id="${paso.id}">
               ${etiqueta}
             </label>
-            ${paso.id === 'formulario_pagado' ? '' : '<button class="btn btn--outline" type="button">Subir archivo</button>'}
+            ${
+              paso.id === 'formulario_pagado'
+                ? ''
+                : `<button class="btn btn--outline" type="button" data-accion="subir-archivo" data-token="${a.token}" data-paso-id="${paso.id}">Subir archivo</button>
+                   <input type="file" class="input-archivo-oculto" hidden data-input-archivo="${paso.id}" data-token="${a.token}" data-paso-id="${paso.id}">
+                   <span class="archivo-nombre" data-campo="archivo-nombre"></span>`
+            }
           `;
         } else if (paso.tipo === 'automatico') {
-          acciones = `<span class="chip ${paso.completado ? 'chip--success' : 'chip--pending'}">${
-            paso.completado ? 'Confirmado automáticamente por Q10' : 'Q10 todavía no confirma el pago'
-          }</span>`;
+          acciones = `
+            <span class="chip ${paso.completado ? 'chip--success' : 'chip--pending'}" data-campo="chip-pago">${
+              paso.completado ? 'Confirmado automáticamente por Q10' : 'Q10 todavía no confirma el pago'
+            }</span>
+            <button class="btn btn--outline btn--accion" type="button" data-accion="simular-pago" data-token="${a.token}" data-paso-id="${paso.id}" data-completado="${paso.completado}">
+              ${paso.completado ? 'Simular: marcar como no pagado' : 'Simular: marcar como pagado'}
+            </button>
+            <p class="paso__nota">
+              Botón temporal mientras no existe la conexión real con Q10 — simula que el webhook de pago
+              llegó (o se revirtió), solo para poder probar el flujo completo.
+            </p>
+          `;
         } else if (paso.tipo === 'aprobacion') {
           acciones = `
             <div class="comite-acciones">
@@ -312,6 +332,19 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
       }
       const estado = detalle.querySelector<HTMLElement>('[data-campo="estado"]');
       if (estado) estado.textContent = completado ? 'Completado' : 'Pendiente';
+
+      // Paso "automatico" (Q10): además del estado genérico de arriba, el
+      // chip propio del paso y el botón de simulación deben quedar acordes.
+      const chipPago = detalle.querySelector<HTMLElement>('[data-campo="chip-pago"]');
+      if (chipPago) {
+        chipPago.textContent = completado ? 'Confirmado automáticamente por Q10' : 'Q10 todavía no confirma el pago';
+        chipPago.className = `chip ${completado ? 'chip--success' : 'chip--pending'}`;
+      }
+      const botonSimular = detalle.querySelector<HTMLButtonElement>('button[data-accion="simular-pago"]');
+      if (botonSimular) {
+        botonSimular.dataset.completado = String(completado);
+        botonSimular.textContent = completado ? 'Simular: marcar como no pagado' : 'Simular: marcar como pagado';
+      }
     }
     if (pasoId === 'formulario_pagado') {
       const chip = document.querySelector<HTMLElement>(`.tabla__fila[data-token="${token}"] [data-campo="formulario"]`);
@@ -320,6 +353,16 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
         chip.className = `chip ${completado ? 'chip--success' : 'chip--pending'}`;
       }
     }
+  }
+
+  // Muestra el nombre del archivo "subido" (simulado) junto al botón de
+  // ese paso — ver la nota de CambiosAspirante.archivos.
+  function aplicarArchivoADom(token: string, pasoId: PasoManual['id'], nombreArchivo: string) {
+    const detalle = document.querySelector<HTMLElement>(
+      `.panel[data-token="${token}"] details[data-paso-id="${pasoId}"]`
+    );
+    const span = detalle?.querySelector<HTMLElement>('[data-campo="archivo-nombre"]');
+    if (span) span.textContent = nombreArchivo;
   }
 
   function aplicarResultadoADom(token: string, resultado: ResultadoAdmision) {
@@ -450,6 +493,11 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
       cambios.pasos?.forEach((p) => aplicarPasoADom(token, p.id, p.completado));
       if (cambios.resultado) aplicarResultadoADom(token, cambios.resultado);
       if (cambios.datos) aplicarDatosADom(token, cambios.datos);
+      if (cambios.archivos) {
+        Object.entries(cambios.archivos).forEach(([pasoId, nombre]) => {
+          if (nombre) aplicarArchivoADom(token, pasoId as PasoManual['id'], nombre);
+        });
+      }
       if (cambios.eliminado) {
         aplicarEliminadoADom(token);
         return;
@@ -477,6 +525,32 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     actualizarPaso(token, pasosBaseDe(panel), pasoId, completado);
     aplicarPasoADom(token, pasoId, completado);
     actualizarBotonesComite(panel);
+  });
+
+  // "Subir archivo" es una simulación (no hay backend real todavía, ver el
+  // TODO(servidor) de estadoAspirantes.ts): elegir un archivo lo guarda por
+  // su nombre, lo muestra en la ficha y marca el paso como recibido, igual
+  // que si alguien hubiera marcado el checkbox a mano.
+  document.addEventListener('change', (evento) => {
+    const input = (evento.target as HTMLElement).closest<HTMLInputElement>('input[data-input-archivo]');
+    if (!input || !input.files || input.files.length === 0) return;
+
+    const token = input.dataset.token!;
+    const pasoId = input.dataset.pasoId as PasoManual['id'];
+    const nombreArchivo = input.files[0].name;
+    const panel = document.querySelector<HTMLElement>(`.panel[data-token="${token}"]`);
+    if (!panel) return;
+
+    actualizarArchivo(token, pasoId, nombreArchivo);
+    aplicarArchivoADom(token, pasoId, nombreArchivo);
+
+    const checkbox = panel.querySelector<HTMLInputElement>(`input[type="checkbox"][data-paso-id="${pasoId}"]`);
+    if (checkbox && !checkbox.checked) {
+      checkbox.checked = true;
+      actualizarPaso(token, pasosBaseDe(panel), pasoId, true);
+      aplicarPasoADom(token, pasoId, true);
+      actualizarBotonesComite(panel);
+    }
   });
 
   // Botones "Admitir estudiante" y "Rechazar cupo": las dos salidas
@@ -509,11 +583,47 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
       return;
     }
 
-    // "Editar datos": muestra/oculta el formulario con los datos básicos
-    // del aspirante (nombre, grado, acudiente).
+    // Botón "Simular: marcar como pagado/no pagado" del paso automático
+    // (Q10): invierte el estado guardado, temporalmente, mientras no existe
+    // la conexión real — ver la nota junto al botón en la ficha.
+    const botonSimularPago = objetivo.closest<HTMLButtonElement>('button[data-accion="simular-pago"]');
+    if (botonSimularPago) {
+      const token = botonSimularPago.dataset.token!;
+      const pasoId = botonSimularPago.dataset.pasoId as PasoManual['id'];
+      const panel = document.querySelector<HTMLElement>(`.panel[data-token="${token}"]`);
+      if (!panel) return;
+      const completadoActual = botonSimularPago.dataset.completado === 'true';
+      const nuevoCompletado = !completadoActual;
+      actualizarPaso(token, pasosBaseDe(panel), pasoId, nuevoCompletado);
+      aplicarPasoADom(token, pasoId, nuevoCompletado);
+      actualizarBotonesComite(panel);
+      return;
+    }
+
+    // "Subir archivo" abre el selector de archivos oculto asociado a ese
+    // paso (el input real está oculto porque no se puede estilar).
+    const botonSubirArchivo = objetivo.closest<HTMLButtonElement>('button[data-accion="subir-archivo"]');
+    if (botonSubirArchivo) {
+      const token = botonSubirArchivo.dataset.token;
+      const pasoId = botonSubirArchivo.dataset.pasoId;
+      const input = document.querySelector<HTMLInputElement>(
+        `input[data-input-archivo="${pasoId}"][data-token="${token}"]`
+      );
+      input?.click();
+      return;
+    }
+
+    // "Editar datos" y "Eliminar aspirante" pueden venir de dos lugares: el
+    // botón dentro de la ficha (que ya está dentro de `.panel`) o el icono
+    // al lado de la fila en la tabla (que no lo está) — por eso se busca el
+    // panel siempre por token, no por closest('.panel'), para que funcione
+    // desde cualquiera de los dos.
     const botonEditar = objetivo.closest<HTMLButtonElement>('button[data-accion="editar"]');
     if (botonEditar) {
-      const panel = botonEditar.closest<HTMLElement>('.panel[data-token]');
+      const token = botonEditar.dataset.token!;
+      const fila = document.querySelector<HTMLElement>(`.tabla__fila[data-token="${token}"]`);
+      if (fila?.dataset.index !== undefined) seleccionar(fila.dataset.index);
+      const panel = document.querySelector<HTMLElement>(`.panel[data-token="${token}"]`);
       const form = panel?.querySelector<HTMLElement>('[data-campo="form-edicion"]');
       if (form) form.hidden = !form.hidden;
       return;
@@ -551,9 +661,13 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     const botonEliminar = objetivo.closest<HTMLButtonElement>('button[data-accion="eliminar"]');
     if (botonEliminar) {
       const token = botonEliminar.dataset.token!;
-      const panel = botonEliminar.closest<HTMLElement>('.panel[data-token]');
-      const nombre = panel?.querySelector<HTMLElement>('[data-campo="nombre"]')?.textContent || 'este aspirante';
-      const confirmado = window.confirm(`¿Eliminar a ${nombre} de este panel? Solo se oculta en este navegador.`);
+      const fila = document.querySelector<HTMLElement>(`.tabla__fila[data-token="${token}"]`);
+      const panel = document.querySelector<HTMLElement>(`.panel[data-token="${token}"]`);
+      const nombre =
+        fila?.querySelector<HTMLElement>('[data-campo="nombre"]')?.textContent ||
+        panel?.querySelector<HTMLElement>('[data-campo="nombre"]')?.textContent ||
+        'este aspirante';
+      const confirmado = window.confirm(`¿Eliminar a ${nombre}? Esta acción solo lo oculta en este navegador.`);
       if (!confirmado) return;
       marcarEliminado(token);
       aplicarEliminadoADom(token);

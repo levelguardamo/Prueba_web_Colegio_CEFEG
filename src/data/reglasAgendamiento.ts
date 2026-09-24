@@ -39,3 +39,22 @@ export const REGLAS_POR_GRADO: Record<string, ReglaGrado> = {
     maxFamilias: 5,
   },
 };
+
+// El grado específico al que aspira (el que se termina mostrando en la
+// tabla de secretaría, ej. "4° Primaria", "7° Secundaria") es distinto del
+// nivel que arriba define los días/horarios de la cita — un mismo nivel
+// ("Secundaria") agrupa varios grados que comparten agenda. Esta lista es
+// la que llena el segundo selector del formulario de cita, según el nivel
+// elegido en el primero.
+export const GRADOS_POR_NIVEL: Record<string, string[]> = {
+  transicion: ['Transición'],
+  primaria: ['1° Primaria', '2° Primaria', '3° Primaria', '4° Primaria', '5° Primaria'],
+  secundaria: [
+    '6° Secundaria',
+    '7° Secundaria',
+    '8° Secundaria',
+    '9° Secundaria',
+    '10° Secundaria',
+    '11° Secundaria',
+  ],
+};

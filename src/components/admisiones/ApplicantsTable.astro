@@ -40,6 +40,7 @@ function comiteLabel(a: Aspirante) {
     <span>Etapa actual</span>
     <span>Formulario</span>
     <span>Comité</span>
+    <span></span>
   </div>
   {
     filas.map((f, i) => (
@@ -55,6 +56,10 @@ function comiteLabel(a: Aspirante) {
         <span class="tabla__etapa" data-label="Etapa actual">{etapaLabel(f)}</span>
         <span class={chipClase(formularioLabel(f))} data-label="Formulario" data-campo="formulario">{formularioLabel(f)}</span>
         <span class={chipClase(comiteLabel(f))} data-label="Comité" data-campo="comite">{comiteLabel(f)}</span>
+        <span class="tabla__acciones">
+          <button class="tabla__accion-btn" type="button" data-token={f.token} data-accion="editar" title="Editar datos">✎</button>
+          <button class="tabla__accion-btn tabla__accion-btn--peligro" type="button" data-token={f.token} data-accion="eliminar" title="Eliminar aspirante">🗑</button>
+        </span>
       </div>
     ))
   }
@@ -71,11 +76,36 @@ function comiteLabel(a: Aspirante) {
   }
   .tabla__fila {
     display: grid;
-    grid-template-columns: 2fr 1fr 1.4fr 1fr 1fr;
+    grid-template-columns: 2fr 1fr 1.4fr 1fr 1fr auto;
     gap: 8px;
     align-items: center;
     padding: 14px 20px;
     border-top: 1px solid var(--line);
+  }
+  .tabla__acciones {
+    display: flex;
+    gap: 4px;
+    justify-self: end;
+  }
+  .tabla__accion-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    border: 1px solid #e3ddcf;
+    background: #fff;
+    color: var(--terracota);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+  }
+  .tabla__accion-btn:hover {
+    background: var(--cream);
+  }
+  .tabla__accion-btn--peligro {
+    color: #a13d1f;
   }
   .tabla__fila--header {
     border-top: none;

@@ -119,15 +119,40 @@ const todosPreviosCompletos = pasosPrevios.every((p) => p.completado);
                   <input type="checkbox" checked={paso.completado} data-token={aspirante.token} data-paso-id={paso.id} />
                   Marcar como recibido en físico
                 </label>
-                <button class="btn btn--outline" type="button">
+                <button class="btn btn--outline" type="button" data-accion="subir-archivo" data-token={aspirante.token} data-paso-id={paso.id}>
                   Subir archivo
                 </button>
+                <input
+                  type="file"
+                  class="input-archivo-oculto"
+                  hidden
+                  data-input-archivo={paso.id}
+                  data-token={aspirante.token}
+                  data-paso-id={paso.id}
+                />
+                <span class="archivo-nombre" data-campo="archivo-nombre"></span>
               </>
             )}
             {paso.tipo === 'automatico' && (
-              <span class={`chip ${paso.completado ? 'chip--success' : 'chip--pending'}`}>
-                {paso.completado ? 'Confirmado automáticamente por Q10' : 'Q10 todavía no confirma el pago'}
-              </span>
+              <>
+                <span class={`chip ${paso.completado ? 'chip--success' : 'chip--pending'}`} data-campo="chip-pago">
+                  {paso.completado ? 'Confirmado automáticamente por Q10' : 'Q10 todavía no confirma el pago'}
+                </span>
+                <button
+                  class="btn btn--outline btn--accion"
+                  type="button"
+                  data-accion="simular-pago"
+                  data-token={aspirante.token}
+                  data-paso-id={paso.id}
+                  data-completado={String(paso.completado)}
+                >
+                  {paso.completado ? 'Simular: marcar como no pagado' : 'Simular: marcar como pagado'}
+                </button>
+                <p class="paso__nota">
+                  Botón temporal mientras no existe la conexión real con Q10 — simula que el webhook de pago
+                  llegó (o se revirtió), solo para poder probar el flujo completo.
+                </p>
+              </>
             )}
             {paso.tipo === 'aprobacion' && (
               <>
@@ -387,6 +412,15 @@ const todosPreviosCompletos = pasosPrevios.every((p) => p.completado);
     gap: 8px;
     font-size: 13px;
     color: var(--text);
+  }
+  .archivo-nombre {
+    font-size: 12px;
+    color: var(--text-faint);
+    font-style: italic;
+  }
+  .archivo-nombre:not(:empty)::before {
+    content: '📎 ';
+    font-style: normal;
   }
   .check input {
     width: 16px;

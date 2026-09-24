@@ -13,10 +13,11 @@
 // contra la disponibilidad real (por si un cupo de un horario ya se llenó).
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Calendar from '../../components/admisiones/Calendar.astro';
-import { REGLAS_POR_GRADO } from '../../data/reglasAgendamiento';
+import { REGLAS_POR_GRADO, GRADOS_POR_NIVEL } from '../../data/reglasAgendamiento';
 
 const gradoSeleccionado = 'secundaria';
 const regla = REGLAS_POR_GRADO[gradoSeleccionado];
+const gradosEspecificos = GRADOS_POR_NIVEL[gradoSeleccionado];
 
 // El mes que se muestra siempre es el actual, para no quedar desactualizado.
 const hoy = new Date();
@@ -56,15 +57,22 @@ const DIAS_CERRADOS = [1, 4];
 
         <div class="ventana__col ventana__col--datos">
           <label class="campo">
-            <span>Grado al que aspira</span>
-            <select name="grado" id="campo-grado">
+            <span>Nivel educativo</span>
+            <select name="nivel" id="campo-grado">
               {Object.entries(REGLAS_POR_GRADO).map(([key, r]) => (
-                <option value={key} selected={key === gradoSeleccionado} data-grado-label={r.grado} data-grupal={String(r.grupal)}>
+                <option value={key} selected={key === gradoSeleccionado} data-grupal={String(r.grupal)}>
                   {r.grado}
                 </option>
               ))}
             </select>
-            <span class="campo__ayuda">El grado define automáticamente los días y horarios disponibles</span>
+            <span class="campo__ayuda">El nivel define automáticamente los días y horarios disponibles</span>
+          </label>
+
+          <label class="campo">
+            <span>Grado al que aspira</span>
+            <select name="gradoEspecifico" id="campo-grado-especifico">
+              {gradosEspecificos.map((g) => <option value={g}>{g}</option>)}
+            </select>
           </label>
 
           <div class="horarios">
@@ -79,7 +87,7 @@ const DIAS_CERRADOS = [1, 4];
 
           <div class="datos-acudiente">
             <label class="campo">
-              <span>Nombre del niño o niña</span>
+              <span>Nombre del estudiante</span>
               <input type="text" name="nombreNino" placeholder="Nombre completo del aspirante" required />
             </label>
             <label class="campo">
@@ -100,8 +108,9 @@ const DIAS_CERRADOS = [1, 4];
       </form>
 
       <div class="confirmacion" id="confirmacion" hidden>
-        <div class="confirmacion__icono">✓</div>
         <div class="serif confirmacion__titulo">Tu registro se realizó con éxito</div>
+        <p class="confirmacion__aviso">Abajo se encuentra el código con el que podrás consultar el estado de admisión</p>
+        <div class="confirmacion__icono" aria-hidden="true">↓</div>
         <p class="confirmacion__texto">
           Quedó registrada la cita de <strong id="confirmacion-nombre"></strong> para
           <strong id="confirmacion-grado"></strong>, el <strong id="confirmacion-fecha"></strong>.
@@ -123,7 +132,7 @@ const DIAS_CERRADOS = [1, 4];
   </main>
 </BaseLayout>
 
-<script define:vars={{ reglas: REGLAS_POR_GRADO, diasCerrados: DIAS_CERRADOS, nombreMes, anio, mes }}>
+<script define:vars={{ reglas: REGLAS_POR_GRADO, gradosPorNivel: GRADOS_POR_NIVEL, diasCerrados: DIAS_CERRADOS, nombreMes, anio, mes }}>
   // Hace funcional el formulario de agendamiento: al cambiar el grado se
   // recalculan qué días del calendario quedan habilitados, y al hacer
   // clic en un día disponible se cargan los horarios que le corresponden
@@ -132,6 +141,7 @@ const DIAS_CERRADOS = [1, 4];
   const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
   const selectGrado = document.getElementById('campo-grado');
+  const selectGradoEspecifico = document.getElementById('campo-grado-especifico');
   const grid = document.getElementById('calendario-grid');
   const horariosLista = document.getElementById('horarios-lista');
   const horariosLabel = document.getElementById('horarios-label');
@@ -202,6 +212,14 @@ const DIAS_CERRADOS = [1, 4];
     btnConfirmar.disabled = horarios.length === 0;
   }
 
+  // Repuebla el selector de "grado al que aspira" (el específico, ej. "7°
+  // Secundaria") según el nivel educativo elegido en el selector de arriba
+  // — cada nivel agrupa varios grados que comparten agenda.
+  function repintarGradoEspecifico() {
+    const grados = gradosPorNivel[selectGrado.value] ?? [];
+    selectGradoEspecifico.innerHTML = grados.map((g) => `<option value="${g}">${g}</option>`).join('');
+  }
+
   function limpiarSeleccion() {
     diaSeleccionado = null;
     campoFecha.value = '';
@@ -221,6 +239,7 @@ const DIAS_CERRADOS = [1, 4];
   selectGrado.addEventListener('change', () => {
     limpiarSeleccion();
     repintarCalendario();
+    repintarGradoEspecifico();
   });
 
   repintarCalendario();
@@ -251,9 +270,9 @@ const DIAS_CERRADOS = [1, 4];
     const fechaBase = String(datosForm.get('fecha') ?? '');
     if (!fechaBase) return; // sin fecha elegida, no hay nada que confirmar
 
-    const opcionGrado = (document.getElementById('campo-grado') as HTMLSelectElement).selectedOptions[0];
-    const gradoLabel = opcionGrado?.dataset.gradoLabel ?? '';
-    const grupal = opcionGrado?.dataset.grupal === 'true';
+    const opcionNivel = (document.getElementById('campo-grado') as HTMLSelectElement).selectedOptions[0];
+    const gradoLabel = (document.getElementById('campo-grado-especifico') as HTMLSelectElement).value;
+    const grupal = opcionNivel?.dataset.grupal === 'true';
 
     const fechaLegibleBase = (document.getElementById('campo-fecha-legible') as HTMLInputElement).value;
     const fechaLegible = horario ? `${fechaLegibleBase} · ${horario}` : fechaLegibleBase;
@@ -455,6 +474,11 @@ const DIAS_CERRADOS = [1, 4];
     font-size: 22px;
     font-weight: 700;
     color: var(--navy);
+  }
+  .confirmacion__aviso {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted);
   }
   .confirmacion__texto {
     margin: 0;
