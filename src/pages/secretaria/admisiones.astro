@@ -12,7 +12,16 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
 
 <BaseLayout title="Panel de secretaría">
   <main class="page">
-    <div class="grid">
+    <div class="tabs" role="tablist">
+      <button type="button" class="tabs__boton tabs__boton--activo" role="tab" aria-selected="true" data-tab="aspirantes">
+        Aspirantes
+      </button>
+      <button type="button" class="tabs__boton" role="tab" aria-selected="false" data-tab="citas">
+        Citas agendadas
+      </button>
+    </div>
+
+    <div class="grid" id="vista-aspirantes" data-vista="aspirantes">
       <ApplicantsTable filas={aspirantesTabla} />
 
       <div class="grid__right">
@@ -22,6 +31,20 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
           ))
         }
       </div>
+    </div>
+
+    <div class="citas card" id="vista-citas" data-vista="citas" hidden>
+      <div class="citas__header">
+        <div>
+          <div class="serif citas__titulo">Citas agendadas</div>
+          <p class="citas__subtitulo">
+            Agrupadas por fecha y horario — una reunión grupal aparece como un solo bloque con todas las
+            familias que la comparten.
+          </p>
+        </div>
+        <input type="search" class="citas__buscador" id="citas-buscador" placeholder="Buscar por nombre, acudiente o grado…" />
+      </div>
+      <div class="citas__lista" id="citas-lista"></div>
     </div>
   </main>
 </BaseLayout>
@@ -39,6 +62,7 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     leerCambios,
   } from '../../scripts/estadoAspirantes';
   import { leerNuevosAspirantes } from '../../scripts/nuevosAspirantes';
+  import { aspirantesTabla } from '../../data/mockSecretaria';
 
   // --- Aspirantes agendados desde /admisiones/cita (nacidos en el navegador) ---
   //
@@ -673,6 +697,199 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
       aplicarEliminadoADom(token);
     }
   });
+
+  // --- Pestaña "Citas agendadas" ---
+  //
+  // Junta la cita (proximaCita) de TODOS los aspirantes — los del build y
+  // los agendados desde /admisiones/cita — y las agrupa por fecha y por
+  // horario/título, para que una reunión grupal (varias familias en el
+  // mismo horario) aparezca como un solo bloque en vez de filas sueltas.
+  const tabs = document.querySelectorAll<HTMLButtonElement>('.tabs__boton');
+  const vistaAspirantes = document.getElementById('vista-aspirantes') as HTMLElement;
+  const vistaCitas = document.getElementById('vista-citas') as HTMLElement;
+  const citasBuscador = document.getElementById('citas-buscador') as HTMLInputElement;
+  const citasLista = document.getElementById('citas-lista') as HTMLElement;
+
+  const MESES: Record<string, number> = {
+    enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
+    julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
+  };
+
+  // Fecha en la que ordenar el día: usa fechaISO cuando existe (las citas
+  // agendadas desde el formulario siempre la traen); si no (datos de
+  // ejemplo más viejos), intenta leerla del texto legible asumiendo el año
+  // actual — suficiente para esta maqueta, ver el TODO(servidor) de
+  // nuevosAspirantes.ts para la versión real.
+  function fechaOrdenableDe(cita: { fecha: string; fechaISO?: string }): Date {
+    if (cita.fechaISO) return new Date(`${cita.fechaISO}T00:00:00`);
+    const m = cita.fecha.match(/(\d{1,2}) de (\p{L}+)/u);
+    if (m) {
+      const mesIdx = MESES[m[2].toLowerCase()];
+      if (mesIdx !== undefined) return new Date(new Date().getFullYear(), mesIdx, Number(m[1]));
+    }
+    return new Date(8640000000000000); // sin fecha reconocible: se muestra al final
+  }
+
+  function minutosDeHora(horaTexto: string): number {
+    const m = horaTexto.match(/(\d{1,2}):(\d{2})\s*(a\.m\.|p\.m\.|m\b)/i);
+    if (!m) return 0;
+    let h = Number(m[1]);
+    const min = Number(m[2]);
+    const sufijo = m[3].toLowerCase();
+    if (sufijo === 'm') h = 12; // "12:00 m" = mediodía
+    else if (sufijo.startsWith('p') && h !== 12) h += 12;
+    else if (sufijo.startsWith('a') && h === 12) h = 0;
+    return h * 60 + min;
+  }
+
+  // Aplica encima del aspirante los cambios guardados por secretaría
+  // (nombre/grado/acudiente editados) para que la agenda muestre lo mismo
+  // que ya se ve en la tabla y la ficha — y descarta los eliminados.
+  function datosVisiblesDe(a: Aspirante): Aspirante | null {
+    const cambios = leerCambios(a.token);
+    if (cambios?.eliminado) return null;
+    if (!cambios?.datos) return a;
+    const d = cambios.datos;
+    return {
+      ...a,
+      nombre: d.nombre ?? a.nombre,
+      grado: d.grado ?? a.grado,
+      acudiente: {
+        ...a.acudiente,
+        nombre: d.acudienteNombre ?? a.acudiente.nombre,
+        telefono: d.acudienteTelefono ?? a.acudiente.telefono,
+      },
+    };
+  }
+
+  function aspirantesConCita(): Aspirante[] {
+    const todos = [...aspirantesTabla, ...leerNuevosAspirantes()];
+    return todos
+      .map(datosVisiblesDe)
+      .filter((a): a is Aspirante => a !== null && a.proximaCita !== null);
+  }
+
+  interface SubgrupoCita {
+    horaTexto: string;
+    titulo: string;
+    ordenHora: number;
+    aspirantes: Aspirante[];
+  }
+  interface DiaCitas {
+    fechaTexto: string;
+    orden: Date;
+    subgrupos: SubgrupoCita[];
+  }
+
+  // Primer nivel de agrupación: por fecha (texto legible completo, ej.
+  // "Jueves 25 de septiembre"). Segundo nivel: por horario + título de la
+  // cita (así "Reunión grupal de admisión · 7:30 a.m." junta a todas las
+  // familias de esa franja, y una cita individual queda en su propio
+  // bloque de un solo nombre).
+  function construirAgenda(lista: Aspirante[]): DiaCitas[] {
+    const porFecha = new Map<string, { fechaTexto: string; orden: Date; subgrupos: Map<string, SubgrupoCita> }>();
+
+    lista.forEach((a) => {
+      const cita = a.proximaCita!;
+      const [fechaTexto, horaTexto = ''] = cita.fecha.split(' · ');
+      if (!porFecha.has(fechaTexto)) {
+        porFecha.set(fechaTexto, { fechaTexto, orden: fechaOrdenableDe(cita), subgrupos: new Map() });
+      }
+      const dia = porFecha.get(fechaTexto)!;
+      const claveSub = `${horaTexto}||${cita.titulo}`;
+      if (!dia.subgrupos.has(claveSub)) {
+        dia.subgrupos.set(claveSub, { horaTexto, titulo: cita.titulo, ordenHora: minutosDeHora(horaTexto), aspirantes: [] });
+      }
+      dia.subgrupos.get(claveSub)!.aspirantes.push(a);
+    });
+
+    return Array.from(porFecha.values())
+      .sort((d1, d2) => d1.orden.getTime() - d2.orden.getTime())
+      .map((dia) => ({
+        fechaTexto: dia.fechaTexto,
+        orden: dia.orden,
+        subgrupos: Array.from(dia.subgrupos.values()).sort((s1, s2) => s1.ordenHora - s2.ordenHora),
+      }));
+  }
+
+  function pintarCitas() {
+    const filtro = citasBuscador.value.trim().toLowerCase();
+    let lista = aspirantesConCita();
+    if (filtro) {
+      lista = lista.filter(
+        (a) =>
+          a.nombre.toLowerCase().includes(filtro) ||
+          a.acudiente.nombre.toLowerCase().includes(filtro) ||
+          a.grado.toLowerCase().includes(filtro)
+      );
+    }
+
+    const agenda = construirAgenda(lista);
+    citasLista.innerHTML = '';
+
+    if (agenda.length === 0) {
+      citasLista.innerHTML = '<p class="citas__vacio">No hay citas agendadas que coincidan con la búsqueda.</p>';
+      return;
+    }
+
+    agenda.forEach((dia) => {
+      const totalCitas = dia.subgrupos.reduce((n, s) => n + s.aspirantes.length, 0);
+      const bloque = document.createElement('div');
+      bloque.className = 'citas__dia';
+      bloque.innerHTML = `
+        <div class="citas__dia-header">
+          <span class="citas__dia-fecha">${escapeHtml(dia.fechaTexto)}</span>
+          <span class="citas__dia-conteo">${totalCitas} cita${totalCitas === 1 ? '' : 's'}</span>
+        </div>
+      `;
+      dia.subgrupos.forEach((sub) => {
+        const grupo = document.createElement('div');
+        grupo.className = 'citas__grupo';
+        grupo.innerHTML = `
+          <div class="citas__grupo-header">
+            <span class="citas__grupo-hora">${escapeHtml(sub.horaTexto)}</span>
+            <span class="citas__grupo-titulo">${escapeHtml(sub.titulo)}</span>
+            ${sub.aspirantes.length > 1 ? `<span class="chip chip--pending">${sub.aspirantes.length} familias</span>` : ''}
+          </div>
+          <div class="citas__familias">
+            ${sub.aspirantes
+              .map(
+                (a) => `
+              <div class="citas__familia">
+                <span class="citas__familia-nombre">${escapeHtml(a.nombre)}</span>
+                <span class="citas__familia-grado">${escapeHtml(a.grado)}</span>
+                <span class="citas__familia-acudiente">Acudiente: ${escapeHtml(a.acudiente.nombre)}</span>
+              </div>
+            `
+              )
+              .join('')}
+          </div>
+        `;
+        bloque.appendChild(grupo);
+      });
+      citasLista.appendChild(bloque);
+    });
+
+    // citas-lista ya trae el atributo de scope de Astro (viene del build);
+    // se lo copiamos a todo lo que acabamos de crear a mano con JS, igual
+    // que con las filas/paneles nuevos — si no, se ven sin estilo.
+    copiarCidAstro('#citas-lista', citasLista);
+  }
+
+  tabs.forEach((boton) => {
+    boton.addEventListener('click', () => {
+      tabs.forEach((b) => {
+        b.classList.toggle('tabs__boton--activo', b === boton);
+        b.setAttribute('aria-selected', String(b === boton));
+      });
+      const esCitas = boton.dataset.tab === 'citas';
+      vistaAspirantes.hidden = esCitas;
+      vistaCitas.hidden = !esCitas;
+      if (esCitas) pintarCitas();
+    });
+  });
+
+  citasBuscador.addEventListener('input', pintarCitas);
 </script>
 
 <style>
@@ -693,8 +910,153 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     flex: 1;
     min-height: 0;
   }
+  /* Igual que en otros componentes del módulo: la clase con scope de Astro
+     (display:...) le gana en especificidad a la regla nativa
+     `[hidden]{display:none}` — hay que forzarla aquí. */
+  .grid[hidden] {
+    display: none;
+  }
   .grid__right {
     min-height: 0;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .tabs__boton {
+    border: none;
+    background: transparent;
+    padding: 9px 16px;
+    border-radius: 6px 6px 0 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-faint);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tabs__boton:hover {
+    color: var(--text);
+  }
+  .tabs__boton--activo {
+    color: var(--terracota);
+    border-bottom-color: var(--terracota);
+  }
+
+  .citas {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .citas[hidden] {
+    display: none;
+  }
+  .citas__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .citas__titulo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+  .citas__subtitulo {
+    margin: 4px 0 0;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    max-width: 480px;
+    line-height: 1.5;
+  }
+  .citas__buscador {
+    border: 1px solid #dcd9cf;
+    border-radius: 4px;
+    padding: 9px 12px;
+    font-size: 13px;
+    min-width: 240px;
+    font-family: var(--font-sans);
+  }
+  .citas__lista {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .citas__vacio {
+    font-size: 13px;
+    color: var(--text-faint);
+    font-style: italic;
+  }
+  .citas__dia {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .citas__dia-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--cream);
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+  .citas__dia-conteo {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .citas__grupo {
+    padding: 12px 16px;
+    border-top: 1px solid var(--line);
+  }
+  .citas__grupo-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .citas__grupo-hora {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--terracota);
+  }
+  .citas__grupo-titulo {
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+  .citas__familias {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .citas__familia {
+    display: grid;
+    grid-template-columns: 1.4fr 0.6fr 1.4fr;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--cream);
+    border-radius: 4px;
+    font-size: 12.5px;
+  }
+  .citas__familia-nombre {
+    font-weight: 700;
+    color: var(--text);
+  }
+  .citas__familia-grado {
+    color: var(--text-muted);
+  }
+  .citas__familia-acudiente {
+    color: var(--text-faint);
   }
 
   @media (max-width: 900px) {
@@ -707,6 +1069,13 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     }
     .tabla {
       height: auto;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .citas__familia {
+      grid-template-columns: 1fr;
+      gap: 2px;
     }
   }
 </style>

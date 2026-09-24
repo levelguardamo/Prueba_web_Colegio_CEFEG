@@ -23,6 +23,7 @@ export const aspirantesEjemplo: Aspirante[] = [
     proximaCita: {
       titulo: 'Entrevista con capellanía',
       fecha: 'Jueves 25 de septiembre · 9:00 a.m.',
+      fechaISO: '2026-09-25',
       lugar: 'Sede Guarne · Capellanía',
       notaSincronizacion:
         'Hoy se coordina a mano por WhatsApp y Google Calendar · aquí queda agendada en Q10',

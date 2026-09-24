@@ -67,6 +67,7 @@ export interface DatosCitaNueva {
   telefono: string;
   gradoLabel: string;
   fechaLegible: string; // ej: "Martes 30 de septiembre · 10:00 a.m."
+  fechaISO: string; // YYYY-MM-DD, para poder ordenar la cita en la agenda de secretaría
   grupal: boolean;
   // 'nuevo': el estudiante va a iniciar el grado por primera vez.
   // 'traslado': ya inició el proceso escolar en ese grado en otro colegio
@@ -105,6 +106,7 @@ export function crearAspiranteDesdeCita(datos: DatosCitaNueva): Aspirante {
     proximaCita: {
       titulo: datos.grupal ? 'Reunión grupal de admisión' : 'Cita inicial de admisión',
       fecha: datos.fechaLegible,
+      fechaISO: datos.fechaISO,
       lugar: 'Sede Guarne',
       notaSincronizacion: 'Agendada desde el formulario público · aquí queda agendada en Q10',
     },

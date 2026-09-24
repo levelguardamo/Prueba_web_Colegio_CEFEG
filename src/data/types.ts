@@ -47,7 +47,12 @@ export interface Aspirante {
   documentos: DocumentoChecklist[];
   proximaCita: {
     titulo: string;
-    fecha: string;
+    fecha: string; // texto legible, ej: "Jueves 25 de septiembre · 9:00 a.m."
+    // Fecha en formato YYYY-MM-DD — además del texto legible de arriba,
+    // para poder ordenar y agrupar citas cronológicamente en el panel de
+    // secretaría sin tener que interpretar el texto. Opcional porque los
+    // datos de ejemplo más viejos no siempre la traen.
+    fechaISO?: string;
     lugar: string;
     notaSincronizacion: string;
   } | null;
