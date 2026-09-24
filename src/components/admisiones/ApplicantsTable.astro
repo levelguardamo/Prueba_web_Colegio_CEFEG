@@ -50,8 +50,8 @@ function comiteLabel(a: Aspirante) {
         tabindex="0"
         role="button"
       >
-        <span class="tabla__nombre" data-label="Aspirante">{f.nombre}</span>
-        <span class="tabla__texto" data-label="Grado">{f.grado}</span>
+        <span class="tabla__nombre" data-label="Aspirante" data-campo="nombre">{f.nombre}</span>
+        <span class="tabla__texto" data-label="Grado" data-campo="grado">{f.grado}</span>
         <span class="tabla__etapa" data-label="Etapa actual">{etapaLabel(f)}</span>
         <span class={chipClase(formularioLabel(f))} data-label="Formulario" data-campo="formulario">{formularioLabel(f)}</span>
         <span class={chipClase(comiteLabel(f))} data-label="Comité" data-campo="comite">{comiteLabel(f)}</span>

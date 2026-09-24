@@ -29,7 +29,14 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
 <script>
   import type { Aspirante, PasoManual, ResultadoAdmision } from '../../data/types';
   import { ETAPAS_ORDEN } from '../../data/types';
-  import { actualizarPaso, actualizarResultado, leerCambios } from '../../scripts/estadoAspirantes';
+  import type { DatosEditables } from '../../scripts/estadoAspirantes';
+  import {
+    actualizarPaso,
+    actualizarResultado,
+    actualizarDatos,
+    marcarEliminado,
+    leerCambios,
+  } from '../../scripts/estadoAspirantes';
   import { leerNuevosAspirantes } from '../../scripts/nuevosAspirantes';
 
   // --- Aspirantes agendados desde /admisiones/cita (nacidos en el navegador) ---
@@ -96,8 +103,8 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     fila.tabIndex = 0;
     fila.setAttribute('role', 'button');
     fila.innerHTML = `
-      <span class="tabla__nombre" data-label="Aspirante">${escapeHtml(a.nombre)}</span>
-      <span class="tabla__texto" data-label="Grado">${escapeHtml(a.grado)}</span>
+      <span class="tabla__nombre" data-label="Aspirante" data-campo="nombre">${escapeHtml(a.nombre)}</span>
+      <span class="tabla__texto" data-label="Grado" data-campo="grado">${escapeHtml(a.grado)}</span>
       <span class="tabla__etapa" data-label="Etapa actual">${escapeHtml(etapaLabelDe(a))}</span>
       <span class="${chipClase(formularioLabelDe(a))}" data-label="Formulario" data-campo="formulario">${formularioLabelDe(a)}</span>
       <span class="${chipClase(comiteLabelDe(a))}" data-label="Comité" data-campo="comite">${comiteLabelDe(a)}</span>
@@ -188,11 +195,41 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     panel.hidden = true;
     panel.innerHTML = `
       <div class="panel__header">
-        <div class="eyebrow">Ficha del aspirante</div>
-        <div class="serif panel__nombre">${escapeHtml(a.nombre)}</div>
-        <div class="panel__grado">${escapeHtml(a.grado)}</div>
+        <div class="panel__header-top">
+          <div>
+            <div class="eyebrow">Ficha del aspirante</div>
+            <div class="serif panel__nombre" data-campo="nombre">${escapeHtml(a.nombre)}</div>
+            <div class="panel__grado" data-campo="grado">${escapeHtml(a.grado)}</div>
+          </div>
+          <div class="panel__header-acciones">
+            <button class="btn btn--outline btn--accion" type="button" data-token="${a.token}" data-accion="editar">Editar datos</button>
+            <button class="btn btn--outline btn--accion btn--peligro" type="button" data-token="${a.token}" data-accion="eliminar">Eliminar aspirante</button>
+          </div>
+        </div>
         <div class="panel__resultado" data-campo="resultado-badge" ${a.resultado === 'pendiente' ? 'hidden' : ''}>
           ${a.resultado === 'admitido' ? 'Cupo admitido ✓' : a.resultado === 'rechazado' ? 'Cupo rechazado' : ''}
+        </div>
+        <div class="panel__edicion" data-campo="form-edicion" hidden>
+          <label class="campo-edicion">
+            <span>Nombre del aspirante</span>
+            <input type="text" data-campo-edicion="nombre" value="${escapeHtml(a.nombre)}">
+          </label>
+          <label class="campo-edicion">
+            <span>Grado</span>
+            <input type="text" data-campo-edicion="grado" value="${escapeHtml(a.grado)}">
+          </label>
+          <label class="campo-edicion">
+            <span>Nombre del acudiente</span>
+            <input type="text" data-campo-edicion="acudienteNombre" value="${escapeHtml(a.acudiente.nombre)}">
+          </label>
+          <label class="campo-edicion">
+            <span>Teléfono del acudiente</span>
+            <input type="text" data-campo-edicion="acudienteTelefono" value="${escapeHtml(a.acudiente.telefono)}">
+          </label>
+          <div class="panel__edicion-botones">
+            <button class="btn btn--accent" type="button" data-token="${a.token}" data-accion="guardar-edicion">Guardar cambios</button>
+            <button class="btn btn--outline" type="button" data-accion="cancelar-edicion">Cancelar</button>
+          </div>
         </div>
       </div>
       <div class="progreso">${pasosHtml}</div>
@@ -202,8 +239,8 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
           <span class="info-padres__flecha">▾</span>
         </summary>
         <div class="info-padres__cuerpo">
-          <div class="info-padres__fila"><span class="info-padres__label">Acudiente</span><span>${escapeHtml(a.acudiente.nombre)}</span></div>
-          <div class="info-padres__fila"><span class="info-padres__label">Teléfono</span><span>${escapeHtml(a.acudiente.telefono)}</span></div>
+          <div class="info-padres__fila"><span class="info-padres__label">Acudiente</span><span data-campo="acudiente-nombre">${escapeHtml(a.acudiente.nombre)}</span></div>
+          <div class="info-padres__fila"><span class="info-padres__label">Teléfono</span><span data-campo="acudiente-telefono">${escapeHtml(a.acudiente.telefono)}</span></div>
           <div class="info-padres__fila"><span class="info-padres__label">Radicado</span><span>${escapeHtml(a.acudiente.radicado)}</span></div>
           <p class="paso__nota">Agendado desde el formulario público — en esta prueba no tiene un portal de
           seguimiento propio (eso necesita el backend real).</p>
@@ -314,6 +351,65 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     }
   }
 
+  // Aplica una corrección de datos básicos (nombre, grado, acudiente) a la
+  // fila de la tabla, a la ficha y a sus campos de edición, para que los
+  // tres queden de acuerdo tras guardar o tras recargar la página.
+  function aplicarDatosADom(token: string, datos: DatosEditables) {
+    const panel = document.querySelector<HTMLElement>(`.panel[data-token="${token}"]`);
+    const fila = document.querySelector<HTMLElement>(`.tabla__fila[data-token="${token}"]`);
+
+    const campos: { valor?: string; selectorPanel: string; selectorFila?: string; selectorInput: string }[] = [
+      { valor: datos.nombre, selectorPanel: '[data-campo="nombre"]', selectorFila: '[data-campo="nombre"]', selectorInput: '[data-campo-edicion="nombre"]' },
+      { valor: datos.grado, selectorPanel: '[data-campo="grado"]', selectorFila: '[data-campo="grado"]', selectorInput: '[data-campo-edicion="grado"]' },
+      { valor: datos.acudienteNombre, selectorPanel: '[data-campo="acudiente-nombre"]', selectorInput: '[data-campo-edicion="acudienteNombre"]' },
+      { valor: datos.acudienteTelefono, selectorPanel: '[data-campo="acudiente-telefono"]', selectorInput: '[data-campo-edicion="acudienteTelefono"]' },
+    ];
+
+    campos.forEach(({ valor, selectorPanel, selectorFila, selectorInput }) => {
+      if (valor === undefined) return;
+      const elPanel = panel?.querySelector<HTMLElement>(selectorPanel);
+      if (elPanel) elPanel.textContent = valor;
+      if (selectorFila) {
+        const elFila = fila?.querySelector<HTMLElement>(selectorFila);
+        if (elFila) elFila.textContent = valor;
+      }
+      const input = panel?.querySelector<HTMLInputElement>(selectorInput);
+      if (input) input.value = valor;
+    });
+  }
+
+  // "Eliminar" solo oculta la fila y la ficha en este navegador (ver la
+  // nota de CambiosAspirante.eliminado en estadoAspirantes.ts). Si era el
+  // aspirante activo, selecciona el que haya quedado primero para no dejar
+  // la ficha vacía.
+  function aplicarEliminadoADom(token: string) {
+    const fila = document.querySelector<HTMLElement>(`.tabla__fila[data-token="${token}"]`);
+    const panel = document.querySelector<HTMLElement>(`.panel[data-token="${token}"]`);
+    const eraActiva = fila?.classList.contains('tabla__fila--activa') ?? false;
+    fila?.remove();
+    panel?.remove();
+    if (eraActiva) {
+      const siguienteFila = document.querySelector<HTMLElement>('.tabla__fila[data-index]');
+      if (siguienteFila?.dataset.index !== undefined) seleccionar(siguienteFila.dataset.index);
+    }
+  }
+
+  // Descarta lo escrito en el formulario de edición (sin guardar) y lo
+  // vuelve a llenar con lo que hoy se ve en la ficha.
+  function restablecerFormEdicion(panel: HTMLElement) {
+    const valorDe = (selector: string) => panel.querySelector<HTMLElement>(selector)?.textContent ?? '';
+    const ponerEn = (selector: string, valor: string) => {
+      const input = panel.querySelector<HTMLInputElement>(selector);
+      if (input) input.value = valor;
+    };
+    ponerEn('[data-campo-edicion="nombre"]', valorDe('[data-campo="nombre"]'));
+    ponerEn('[data-campo-edicion="grado"]', valorDe('[data-campo="grado"]'));
+    ponerEn('[data-campo-edicion="acudienteNombre"]', valorDe('[data-campo="acudiente-nombre"]'));
+    ponerEn('[data-campo-edicion="acudienteTelefono"]', valorDe('[data-campo="acudiente-telefono"]'));
+    const form = panel.querySelector<HTMLElement>('[data-campo="form-edicion"]');
+    if (form) form.hidden = true;
+  }
+
   function pasosBaseDe(panel: HTMLElement): PasoManual[] {
     try {
       return JSON.parse(panel.dataset.pasosBase ?? '[]');
@@ -353,6 +449,11 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
     if (cambios) {
       cambios.pasos?.forEach((p) => aplicarPasoADom(token, p.id, p.completado));
       if (cambios.resultado) aplicarResultadoADom(token, cambios.resultado);
+      if (cambios.datos) aplicarDatosADom(token, cambios.datos);
+      if (cambios.eliminado) {
+        aplicarEliminadoADom(token);
+        return;
+      }
     }
     // Se recalcula siempre (haya o no cambios guardados) para que el
     // estado inicial de los botones quede acorde a lo que se ve en pantalla.
@@ -405,6 +506,57 @@ import { aspirantesTabla } from '../../data/mockSecretaria';
       actualizarResultado(token, 'rechazado');
       aplicarPasoADom(token, 'comite_aprobo', false);
       aplicarResultadoADom(token, 'rechazado');
+      return;
+    }
+
+    // "Editar datos": muestra/oculta el formulario con los datos básicos
+    // del aspirante (nombre, grado, acudiente).
+    const botonEditar = objetivo.closest<HTMLButtonElement>('button[data-accion="editar"]');
+    if (botonEditar) {
+      const panel = botonEditar.closest<HTMLElement>('.panel[data-token]');
+      const form = panel?.querySelector<HTMLElement>('[data-campo="form-edicion"]');
+      if (form) form.hidden = !form.hidden;
+      return;
+    }
+
+    const botonCancelar = objetivo.closest<HTMLButtonElement>('button[data-accion="cancelar-edicion"]');
+    if (botonCancelar) {
+      const panel = botonCancelar.closest<HTMLElement>('.panel[data-token]');
+      if (panel) restablecerFormEdicion(panel);
+      return;
+    }
+
+    const botonGuardar = objetivo.closest<HTMLButtonElement>('button[data-accion="guardar-edicion"]');
+    if (botonGuardar) {
+      const token = botonGuardar.dataset.token!;
+      const panel = botonGuardar.closest<HTMLElement>('.panel[data-token]');
+      if (!panel) return;
+      const leer = (selector: string) => panel.querySelector<HTMLInputElement>(selector)?.value.trim() ?? '';
+      const datos: DatosEditables = {
+        nombre: leer('[data-campo-edicion="nombre"]'),
+        grado: leer('[data-campo-edicion="grado"]'),
+        acudienteNombre: leer('[data-campo-edicion="acudienteNombre"]'),
+        acudienteTelefono: leer('[data-campo-edicion="acudienteTelefono"]'),
+      };
+      actualizarDatos(token, datos);
+      aplicarDatosADom(token, datos);
+      const form = panel.querySelector<HTMLElement>('[data-campo="form-edicion"]');
+      if (form) form.hidden = true;
+      return;
+    }
+
+    // "Eliminar aspirante": se pide confirmación porque no se puede
+    // deshacer desde la interfaz (habría que volver a marcar "olvidar" a
+    // mano en el navegador). Ver la nota de CambiosAspirante.eliminado.
+    const botonEliminar = objetivo.closest<HTMLButtonElement>('button[data-accion="eliminar"]');
+    if (botonEliminar) {
+      const token = botonEliminar.dataset.token!;
+      const panel = botonEliminar.closest<HTMLElement>('.panel[data-token]');
+      const nombre = panel?.querySelector<HTMLElement>('[data-campo="nombre"]')?.textContent || 'este aspirante';
+      const confirmado = window.confirm(`¿Eliminar a ${nombre} de este panel? Solo se oculta en este navegador.`);
+      if (!confirmado) return;
+      marcarEliminado(token);
+      aplicarEliminadoADom(token);
     }
   });
 </script>
