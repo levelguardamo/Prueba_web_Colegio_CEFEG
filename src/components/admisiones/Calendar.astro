@@ -39,10 +39,14 @@ for (let d = 1; d <= ultimoDia; d++) {
 }
 ---
 
-<div class="calendario" data-anio={anio} data-mes={mes}>
+<div class="calendario">
   <div class="calendario__header">
     <span class="calendario__hint">Selecciona una fecha disponible</span>
-    <span class="serif calendario__mes">{nombreMes} {anio}</span>
+    <div class="calendario__nav">
+      <button type="button" class="calendario__nav-btn" id="calendario-prev" aria-label="Mes anterior">‹</button>
+      <span class="serif calendario__mes" id="calendario-mes-label">{nombreMes} {anio}</span>
+      <button type="button" class="calendario__nav-btn" id="calendario-next" aria-label="Mes siguiente">›</button>
+    </div>
   </div>
   <div class="calendario__grid" id="calendario-grid">
     {ETIQUETAS_LUNES.map((et) => <span class="calendario__etiqueta">{et}</span>)}
@@ -76,6 +80,34 @@ for (let d = 1; d <= ultimoDia; d++) {
     font-size: 17px;
     font-weight: 700;
     color: var(--navy);
+    min-width: 150px;
+    text-align: center;
+  }
+  .calendario__nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .calendario__nav-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid #dcd9cf;
+    background: #fff;
+    color: var(--navy);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .calendario__nav-btn:hover:not(:disabled) {
+    background: var(--cream);
+  }
+  .calendario__nav-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
   .calendario__grid {
     display: grid;

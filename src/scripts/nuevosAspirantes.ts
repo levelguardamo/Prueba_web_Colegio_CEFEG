@@ -23,6 +23,7 @@
 // seguimiento — y este archivo deja de usarse.
 
 import type { Aspirante } from '../data/types';
+import type { TipoProceso } from '../data/reglasAdmision';
 import { construirMensajeBienvenida, construirMensajeRechazo } from '../data/reglasAdmision';
 
 const CLAVE = 'cefeg_admisiones_nuevos_v1';
@@ -67,6 +68,12 @@ export interface DatosCitaNueva {
   gradoLabel: string;
   fechaLegible: string; // ej: "Martes 30 de septiembre · 10:00 a.m."
   grupal: boolean;
+  // 'nuevo': el estudiante va a iniciar el grado por primera vez.
+  // 'traslado': ya inició el proceso escolar en ese grado en otro colegio
+  // y se traslada la información para matricularlo acá. Elegido por el
+  // acudiente en el formulario — define también el año lectivo que se
+  // menciona en los mensajes de bienvenida/rechazo (ver reglasAdmision.ts).
+  tipoProceso: TipoProceso;
 }
 
 // Arma un Aspirante completo a partir de lo que se llenó en el formulario
@@ -88,7 +95,7 @@ export function crearAspiranteDesdeCita(datos: DatosCitaNueva): Aspirante {
     jornada: 'Jornada única',
     etapaActual: 'cita_inicial',
     resultado: 'pendiente',
-    tipoProceso: 'nuevo',
+    tipoProceso: datos.tipoProceso,
     telefonoAcudiente: telefono,
     documentos: [
       { nombre: 'Formulario general (entrevista)', estado: 'Pendiente subir a Q10', pendiente: true },
@@ -107,11 +114,11 @@ export function crearAspiranteDesdeCita(datos: DatosCitaNueva): Aspirante {
       notaSincronizacion: 'Se confirma automáticamente por Q10 apenas se registre el pago',
     },
     mensajeBienvenida: {
-      texto: construirMensajeBienvenida({ nombre: nombrePila, grado: datos.gradoLabel, tipoProceso: 'nuevo' }),
+      texto: construirMensajeBienvenida({ nombre: nombrePila, grado: datos.gradoLabel, tipoProceso: datos.tipoProceso }),
       enviado: false,
     },
     mensajeRechazo: {
-      texto: construirMensajeRechazo({ tipoProceso: 'nuevo' }),
+      texto: construirMensajeRechazo({ tipoProceso: datos.tipoProceso }),
       enviado: false,
     },
     acudiente: { nombre: acudienteNombre, telefono, radicado },

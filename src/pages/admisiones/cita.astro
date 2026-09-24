@@ -13,7 +13,12 @@
 // contra la disponibilidad real (por si un cupo de un horario ya se llenó).
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Calendar from '../../components/admisiones/Calendar.astro';
-import { REGLAS_POR_GRADO, GRADOS_POR_NIVEL } from '../../data/reglasAgendamiento';
+import {
+  REGLAS_POR_GRADO,
+  GRADOS_POR_NIVEL,
+  NIVELES_SIN_GRADO_ESPECIFICO,
+  NIVELES_SIN_VENTANA_DE_FECHAS,
+} from '../../data/reglasAgendamiento';
 
 const gradoSeleccionado = 'secundaria';
 const regla = REGLAS_POR_GRADO[gradoSeleccionado];
@@ -68,12 +73,29 @@ const DIAS_CERRADOS = [1, 4];
             <span class="campo__ayuda">El nivel define automáticamente los días y horarios disponibles</span>
           </label>
 
-          <label class="campo">
+          <label class="campo" id="grado-especifico-wrap">
             <span>Grado al que aspira</span>
             <select name="gradoEspecifico" id="campo-grado-especifico">
               {gradosEspecificos.map((g) => <option value={g}>{g}</option>)}
             </select>
           </label>
+
+          <div class="tipo-proceso">
+            <span class="campo__label">¿El estudiante es nuevo o es un traspaso de otro colegio?</span>
+            <div class="tipo-proceso__opciones">
+              <label class="tipo-proceso__opcion">
+                <input type="radio" name="tipoProceso" value="nuevo" checked />
+                <span class="tipo-proceso__titulo">Estudiante nuevo</span>
+                <span class="tipo-proceso__ayuda">Va a iniciar el grado por primera vez</span>
+              </label>
+              <label class="tipo-proceso__opcion">
+                <input type="radio" name="tipoProceso" value="traslado" />
+                <span class="tipo-proceso__titulo">Traspaso de colegio</span>
+                <span class="tipo-proceso__ayuda">Ya inició el proceso escolar en ese grado y se traslada</span>
+              </label>
+            </div>
+            <span class="campo__ayuda" id="tipo-proceso-ayuda"></span>
+          </div>
 
           <div class="horarios">
             <label class="campo__label" id="horarios-label">Elige un día disponible en el calendario</label>
@@ -132,63 +154,197 @@ const DIAS_CERRADOS = [1, 4];
   </main>
 </BaseLayout>
 
-<script define:vars={{ reglas: REGLAS_POR_GRADO, gradosPorNivel: GRADOS_POR_NIVEL, diasCerrados: DIAS_CERRADOS, nombreMes, anio, mes }}>
-  // Hace funcional el formulario de agendamiento: al cambiar el grado se
-  // recalculan qué días del calendario quedan habilitados, y al hacer
-  // clic en un día disponible se cargan los horarios que le corresponden
-  // (dependen del grado Y del día de la semana elegido). Todo corre en
-  // el navegador porque el sitio es estático — no hay recarga de página.
+<script
+  define:vars={{
+    reglas: REGLAS_POR_GRADO,
+    gradosPorNivel: GRADOS_POR_NIVEL,
+    nivelesSinGradoEspecifico: NIVELES_SIN_GRADO_ESPECIFICO,
+    nivelesSinVentana: NIVELES_SIN_VENTANA_DE_FECHAS,
+    diasCerrados: DIAS_CERRADOS,
+    nombresMes: NOMBRES_MES,
+    anioInicial: anio,
+    mesInicial: mes,
+  }}
+>
+  // Hace funcional el formulario de agendamiento: al cambiar el nivel o el
+  // tipo de proceso (nuevo/traslado) se recalcula qué días quedan
+  // habilitados y en qué meses se puede navegar, y al hacer clic en un día
+  // disponible se cargan los horarios que le corresponden. Todo corre en
+  // el navegador porque el sitio es estático — no hay recarga de página, y
+  // por eso el calendario de un mes cualquiera se arma aquí con JavaScript
+  // (Calendar.astro solo pinta el mes actual al cargar la página).
   const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const ETIQUETAS_LUNES = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
   const selectGrado = document.getElementById('campo-grado');
   const selectGradoEspecifico = document.getElementById('campo-grado-especifico');
+  const gradoEspecificoWrap = document.getElementById('grado-especifico-wrap');
+  const radiosTipoProceso = document.querySelectorAll('input[name="tipoProceso"]');
+  const tipoProcesoAyuda = document.getElementById('tipo-proceso-ayuda');
   const grid = document.getElementById('calendario-grid');
+  const mesLabel = document.getElementById('calendario-mes-label');
+  const btnMesAnterior = document.getElementById('calendario-prev');
+  const btnMesSiguiente = document.getElementById('calendario-next');
   const horariosLista = document.getElementById('horarios-lista');
   const horariosLabel = document.getElementById('horarios-label');
   const campoFecha = document.getElementById('campo-fecha');
   const campoFechaLegible = document.getElementById('campo-fecha-legible');
   const btnConfirmar = document.getElementById('btn-confirmar');
 
-  let diaSeleccionado = null; // número de día del mes, o null
+  let mesActual = mesInicial;
+  let anioActual = anioInicial;
+  let fechaSeleccionada = null; // Date, o null
 
-  function celdas() {
-    return Array.from(grid.querySelectorAll('.calendario__celda[data-day]'));
+  function nivelActual() {
+    return selectGrado.value;
   }
-
+  function tipoActual() {
+    const marcado = Array.from(radiosTipoProceso).find((r) => r.checked);
+    return marcado ? marcado.value : 'nuevo';
+  }
   function reglaActual() {
-    return reglas[selectGrado.value];
+    return reglas[nivelActual()];
   }
 
-  // Repinta el calendario según el grado elegido: un día solo queda
-  // "disponible" (clickeable) si no está en diasCerrados (lunes/jueves,
-  // siempre cerrados) y si su día de la semana está en diasHabilitados
-  // del grado actual.
-  function repintarCalendario() {
-    const regla = reglaActual();
-    celdas().forEach((celda) => {
-      const dow = Number(celda.dataset.dow);
-      celda.classList.remove(
-        'calendario__celda--cerrado',
-        'calendario__celda--no-grado',
-        'calendario__celda--disponible',
-        'calendario__celda--seleccionado'
-      );
-      if (diasCerrados.includes(dow)) {
-        celda.classList.add('calendario__celda--cerrado');
-      } else if (!regla.diasHabilitados.includes(dow)) {
-        celda.classList.add('calendario__celda--no-grado');
-      } else if (Number(celda.dataset.day) === diaSeleccionado) {
-        celda.classList.add('calendario__celda--seleccionado');
-      } else {
-        celda.classList.add('calendario__celda--disponible');
+  // Ventana de fechas en la que se puede agendar, según el tipo de proceso:
+  // - traslado: 15 de febrero al 21 de agosto del mismo año (todo el año
+  //   escolar en curso), desde Transición hasta 11°.
+  // - nuevo: 1 de agosto al 28/29 de febrero del año siguiente.
+  // - Jardín no tiene ventana — se recibe todo el año (ver
+  //   nivelesSinVentana / NIVELES_SIN_VENTANA_DE_FECHAS).
+  // Si la ventana del año en curso ya se cerró, se usa la del siguiente
+  // ciclo, para no dejar el formulario bloqueado el resto del año.
+  function rangoElegible(nivel, tipo) {
+    if (nivelesSinVentana.includes(nivel)) return null;
+    const hoy = new Date();
+    function ventana(base) {
+      if (tipo === 'traslado') {
+        return { desde: new Date(base, 1, 15), hasta: new Date(base, 7, 21, 23, 59, 59) };
       }
+      return { desde: new Date(base, 7, 1), hasta: new Date(base + 1, 2, 0, 23, 59, 59) };
+    }
+    let rango = ventana(hoy.getFullYear());
+    if (rango.hasta < hoy) rango = ventana(hoy.getFullYear() + 1);
+    return rango;
+  }
+
+  function fechaDentroDeRango(fecha, rango) {
+    if (!rango) return true;
+    return fecha >= rango.desde && fecha <= rango.hasta;
+  }
+
+  // Primer y último mes navegables, según la ventana de fechas actual (y
+  // sin permitir ir a meses ya pasados).
+  function limitesDeMeses() {
+    const rango = rangoElegible(nivelActual(), tipoActual());
+    const hoy = new Date();
+    if (!rango) {
+      const max = new Date(hoy.getFullYear(), hoy.getMonth() + 12, 1);
+      return {
+        min: { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 },
+        max: { anio: max.getFullYear(), mes: max.getMonth() + 1 },
+      };
+    }
+    const desdeEfectivo = rango.desde > hoy ? rango.desde : hoy;
+    return {
+      min: { anio: desdeEfectivo.getFullYear(), mes: desdeEfectivo.getMonth() + 1 },
+      max: { anio: rango.hasta.getFullYear(), mes: rango.hasta.getMonth() + 1 },
+    };
+  }
+
+  function clave(anio, mesNum) {
+    return anio * 12 + mesNum;
+  }
+
+  function construirCeldas(anioNum, mesNum) {
+    const primerDia = new Date(anioNum, mesNum - 1, 1);
+    const ultimoDia = new Date(anioNum, mesNum, 0).getDate();
+    const offset = (primerDia.getDay() + 6) % 7; // 0=lunes
+    const celdas = [];
+    for (let i = 0; i < offset; i++) celdas.push(null);
+    for (let d = 1; d <= ultimoDia; d++) {
+      celdas.push({ num: d, fecha: new Date(anioNum, mesNum - 1, d) });
+    }
+    return celdas;
+  }
+
+  // Dibuja el mes que esté en (anioActual, mesActual): la cuadrícula, el
+  // nombre del mes y si los botones de mes anterior/siguiente quedan
+  // habilitados. Se llama cada vez que cambia el mes, el nivel o el tipo
+  // de proceso, porque los tres pueden cambiar qué días están disponibles.
+  function pintarCalendario() {
+    const regla = reglaActual();
+    const rango = rangoElegible(nivelActual(), tipoActual());
+
+    mesLabel.textContent = `${nombresMes[mesActual - 1]} ${anioActual}`;
+
+    grid.innerHTML = '';
+    ETIQUETAS_LUNES.forEach((et) => {
+      const span = document.createElement('span');
+      span.className = 'calendario__etiqueta';
+      span.textContent = et;
+      grid.appendChild(span);
     });
+
+    construirCeldas(anioActual, mesActual).forEach((c) => {
+      const div = document.createElement('div');
+      if (!c) {
+        div.className = 'calendario__celda calendario__celda--blank';
+        grid.appendChild(div);
+        return;
+      }
+      const dow = c.fecha.getDay();
+      div.dataset.day = String(c.num);
+      div.dataset.dow = String(dow);
+      let tipo;
+      if (diasCerrados.includes(dow)) {
+        tipo = 'cerrado';
+      } else if (!regla.diasHabilitados.includes(dow)) {
+        tipo = 'no-grado';
+      } else if (!fechaDentroDeRango(c.fecha, rango)) {
+        tipo = 'no-grado';
+      } else if (fechaSeleccionada && c.fecha.getTime() === fechaSeleccionada.getTime()) {
+        tipo = 'seleccionado';
+      } else {
+        tipo = 'disponible';
+      }
+      div.className = `calendario__celda calendario__celda--${tipo}`;
+      div.textContent = String(c.num);
+      grid.appendChild(div);
+    });
+
+    const { min, max } = limitesDeMeses();
+    btnMesAnterior.disabled = clave(anioActual, mesActual) <= clave(min.anio, min.mes);
+    btnMesSiguiente.disabled = clave(anioActual, mesActual) >= clave(max.anio, max.mes);
+
+    tipoProcesoAyuda.textContent = rango
+      ? `Con esta opción se puede agendar entre el ${rango.desde.getDate()} de ${nombresMes[rango.desde.getMonth()].toLowerCase()} y el ${rango.hasta.getDate()} de ${nombresMes[rango.hasta.getMonth()].toLowerCase()} de ${rango.hasta.getFullYear()}`
+      : 'Este nivel se recibe en cualquier momento del año';
+  }
+
+  function cambiarMes(delta) {
+    let nuevoMes = mesActual + delta;
+    let nuevoAnio = anioActual;
+    if (nuevoMes < 1) {
+      nuevoMes = 12;
+      nuevoAnio -= 1;
+    } else if (nuevoMes > 12) {
+      nuevoMes = 1;
+      nuevoAnio += 1;
+    }
+    const { min, max } = limitesDeMeses();
+    const k = clave(nuevoAnio, nuevoMes);
+    if (k < clave(min.anio, min.mes) || k > clave(max.anio, max.mes)) return;
+    mesActual = nuevoMes;
+    anioActual = nuevoAnio;
+    pintarCalendario();
   }
 
   // Reconstruye los horarios disponibles para el día que se acaba de
-  // seleccionar (dependen del grado y del día de la semana de esa fecha).
-  function actualizarHorarios(dow) {
+  // seleccionar (dependen del nivel y del día de la semana de esa fecha).
+  function actualizarHorarios() {
     const regla = reglaActual();
+    const dow = fechaSeleccionada.getDay();
     const horarios = regla.horariosPorDia[dow] ?? [];
 
     horariosLista.innerHTML = '';
@@ -200,49 +356,72 @@ const DIAS_CERRADOS = [1, 4];
     });
 
     const diaSemanaCap = DIAS_SEMANA[dow].charAt(0).toUpperCase() + DIAS_SEMANA[dow].slice(1);
-    horariosLabel.textContent = `Horarios disponibles · ${DIAS_SEMANA[dow]} ${diaSeleccionado} de ${nombreMes.toLowerCase()}`;
+    const nombreMesSel = nombresMes[fechaSeleccionada.getMonth()].toLowerCase();
+    horariosLabel.textContent = `Horarios disponibles · ${DIAS_SEMANA[dow]} ${fechaSeleccionada.getDate()} de ${nombreMesSel}`;
 
-    const iso = `${anio}-${String(mes).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}`;
+    const iso = `${fechaSeleccionada.getFullYear()}-${String(fechaSeleccionada.getMonth() + 1).padStart(2, '0')}-${String(fechaSeleccionada.getDate()).padStart(2, '0')}`;
     campoFecha.value = iso;
     // Fecha en texto plano (sin la hora todavía — se completa con el
     // horario elegido en el otro script, al confirmar) para que el
     // aspirante creado en localStorage tenga una fecha legible.
-    campoFechaLegible.value = `${diaSemanaCap} ${diaSeleccionado} de ${nombreMes.toLowerCase()}`;
+    campoFechaLegible.value = `${diaSemanaCap} ${fechaSeleccionada.getDate()} de ${nombreMesSel}`;
 
     btnConfirmar.disabled = horarios.length === 0;
   }
 
-  // Repuebla el selector de "grado al que aspira" (el específico, ej. "7°
-  // Secundaria") según el nivel educativo elegido en el selector de arriba
-  // — cada nivel agrupa varios grados que comparten agenda.
+  // Repuebla el selector de "grado al que aspira" (el específico, ej. "7°")
+  // según el nivel educativo elegido en el selector de arriba — cada nivel
+  // agrupa varios grados que comparten agenda.
   function repintarGradoEspecifico() {
-    const grados = gradosPorNivel[selectGrado.value] ?? [];
+    const grados = gradosPorNivel[nivelActual()] ?? [];
     selectGradoEspecifico.innerHTML = grados.map((g) => `<option value="${g}">${g}</option>`).join('');
   }
 
+  // Jardín y Transición son un único grado cada uno, así que no tiene
+  // sentido mostrar el selector de grado específico para ellos (aunque
+  // sigue poblado por detrás, con esa única opción, para que el envío del
+  // formulario no tenga que tratarlos distinto).
+  function actualizarVisibilidadGradoEspecifico() {
+    gradoEspecificoWrap.hidden = nivelesSinGradoEspecifico.includes(nivelActual());
+  }
+
   function limpiarSeleccion() {
-    diaSeleccionado = null;
+    fechaSeleccionada = null;
     campoFecha.value = '';
     horariosLabel.textContent = 'Elige un día disponible en el calendario';
     horariosLista.innerHTML = '<span class="horarios__vacio">Aún no hay una fecha seleccionada</span>';
     btnConfirmar.disabled = true;
   }
 
+  // Al cambiar el nivel o el tipo de proceso cambia también qué ventana de
+  // fechas aplica, así que el calendario salta al primer mes válido de esa
+  // ventana en vez de quedarse mostrando un mes que ya no aplica.
+  function alCambiarFiltro() {
+    limpiarSeleccion();
+    actualizarVisibilidadGradoEspecifico();
+    repintarGradoEspecifico();
+    const { min } = limitesDeMeses();
+    mesActual = min.mes;
+    anioActual = min.anio;
+    pintarCalendario();
+  }
+
   grid.addEventListener('click', (evento) => {
     const celda = evento.target.closest('.calendario__celda--disponible, .calendario__celda--seleccionado');
     if (!celda) return;
-    diaSeleccionado = Number(celda.dataset.day);
-    repintarCalendario();
-    actualizarHorarios(Number(celda.dataset.dow));
+    fechaSeleccionada = new Date(anioActual, mesActual - 1, Number(celda.dataset.day));
+    pintarCalendario();
+    actualizarHorarios();
   });
 
-  selectGrado.addEventListener('change', () => {
-    limpiarSeleccion();
-    repintarCalendario();
-    repintarGradoEspecifico();
-  });
+  btnMesAnterior.addEventListener('click', () => cambiarMes(-1));
+  btnMesSiguiente.addEventListener('click', () => cambiarMes(1));
 
-  repintarCalendario();
+  selectGrado.addEventListener('change', alCambiarFiltro);
+  radiosTipoProceso.forEach((r) => r.addEventListener('change', alCambiarFiltro));
+
+  actualizarVisibilidadGradoEspecifico();
+  pintarCalendario();
 </script>
 
 <script>
@@ -273,6 +452,7 @@ const DIAS_CERRADOS = [1, 4];
     const opcionNivel = (document.getElementById('campo-grado') as HTMLSelectElement).selectedOptions[0];
     const gradoLabel = (document.getElementById('campo-grado-especifico') as HTMLSelectElement).value;
     const grupal = opcionNivel?.dataset.grupal === 'true';
+    const tipoProceso = String(datosForm.get('tipoProceso') ?? 'nuevo') as 'nuevo' | 'traslado';
 
     const fechaLegibleBase = (document.getElementById('campo-fecha-legible') as HTMLInputElement).value;
     const fechaLegible = horario ? `${fechaLegibleBase} · ${horario}` : fechaLegibleBase;
@@ -284,6 +464,7 @@ const DIAS_CERRADOS = [1, 4];
       gradoLabel,
       fechaLegible,
       grupal,
+      tipoProceso,
     });
 
     (document.getElementById('confirmacion-nombre') as HTMLElement).textContent = aspirante.nombre;
@@ -373,6 +554,12 @@ const DIAS_CERRADOS = [1, 4];
     font-weight: 700;
     color: #3b4457;
   }
+  /* Igual que en otros componentes del módulo: la clase con scope de Astro
+     (display:flex) le gana en especificidad a la regla nativa
+     `[hidden]{display:none}`, así que hay que forzarla aquí. */
+  .campo[hidden] {
+    display: none;
+  }
   .campo select,
   .campo input {
     border: 1px solid #dcd9cf;
@@ -426,6 +613,55 @@ const DIAS_CERRADOS = [1, 4];
     opacity: 0;
     pointer-events: none;
   }
+  .tipo-proceso {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .tipo-proceso__opciones {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .tipo-proceso__opcion {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    border: 1px solid #dcd9cf;
+    border-radius: 6px;
+    padding: 12px 14px;
+    cursor: pointer;
+    position: relative;
+  }
+  .tipo-proceso__opcion:has(input:checked) {
+    border-color: var(--navy);
+    background: var(--cream);
+  }
+  .tipo-proceso__opcion input {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    margin: 0;
+    accent-color: var(--navy);
+  }
+  .tipo-proceso__titulo {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    padding-right: 20px;
+  }
+  .tipo-proceso__ayuda {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-faint);
+  }
+
+  @media (max-width: 480px) {
+    .tipo-proceso__opciones {
+      grid-template-columns: 1fr;
+    }
+  }
+
   .datos-acudiente {
     display: flex;
     flex-direction: column;
