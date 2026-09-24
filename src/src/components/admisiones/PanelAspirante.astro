@@ -45,11 +45,48 @@ const todosPreviosCompletos = pasosPrevios.every((p) => p.completado);
   hidden={!activo}
 >
   <div class="panel__header">
-    <div class="eyebrow">Ficha del aspirante</div>
-    <div class="serif panel__nombre">{aspirante.nombre}</div>
-    <div class="panel__grado">{aspirante.grado}</div>
+    <div class="panel__header-top">
+      <div>
+        <div class="eyebrow">Ficha del aspirante</div>
+        <div class="serif panel__nombre" data-campo="nombre">{aspirante.nombre}</div>
+        <div class="panel__grado" data-campo="grado">{aspirante.grado}</div>
+      </div>
+      <div class="panel__header-acciones">
+        <button class="btn btn--outline btn--accion" type="button" data-token={aspirante.token} data-accion="editar">
+          Editar datos
+        </button>
+        <button class="btn btn--outline btn--accion btn--peligro" type="button" data-token={aspirante.token} data-accion="eliminar">
+          Eliminar aspirante
+        </button>
+      </div>
+    </div>
     <div class="panel__resultado" data-campo="resultado-badge" hidden={aspirante.resultado === 'pendiente'}>
       {aspirante.resultado === 'admitido' ? 'Cupo admitido ✓' : aspirante.resultado === 'rechazado' ? 'Cupo rechazado' : ''}
+    </div>
+
+    <div class="panel__edicion" data-campo="form-edicion" hidden>
+      <label class="campo-edicion">
+        <span>Nombre del aspirante</span>
+        <input type="text" data-campo-edicion="nombre" value={aspirante.nombre} />
+      </label>
+      <label class="campo-edicion">
+        <span>Grado</span>
+        <input type="text" data-campo-edicion="grado" value={aspirante.grado} />
+      </label>
+      <label class="campo-edicion">
+        <span>Nombre del acudiente</span>
+        <input type="text" data-campo-edicion="acudienteNombre" value={aspirante.acudiente.nombre} />
+      </label>
+      <label class="campo-edicion">
+        <span>Teléfono del acudiente</span>
+        <input type="text" data-campo-edicion="acudienteTelefono" value={aspirante.acudiente.telefono} />
+      </label>
+      <div class="panel__edicion-botones">
+        <button class="btn btn--accent" type="button" data-token={aspirante.token} data-accion="guardar-edicion">
+          Guardar cambios
+        </button>
+        <button class="btn btn--outline" type="button" data-accion="cancelar-edicion">Cancelar</button>
+      </div>
     </div>
   </div>
 
@@ -142,11 +179,11 @@ const todosPreviosCompletos = pasosPrevios.every((p) => p.completado);
     <div class="info-padres__cuerpo">
       <div class="info-padres__fila">
         <span class="info-padres__label">Acudiente</span>
-        <span>{aspirante.acudiente.nombre}</span>
+        <span data-campo="acudiente-nombre">{aspirante.acudiente.nombre}</span>
       </div>
       <div class="info-padres__fila">
         <span class="info-padres__label">Teléfono</span>
-        <span>{aspirante.acudiente.telefono}</span>
+        <span data-campo="acudiente-telefono">{aspirante.acudiente.telefono}</span>
       </div>
       <div class="info-padres__fila">
         <span class="info-padres__label">Radicado</span>
@@ -177,6 +214,54 @@ const todosPreviosCompletos = pasosPrevios.every((p) => p.completado);
   }
   .panel__header {
     margin-bottom: 20px;
+  }
+  .panel__header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .panel__header-acciones {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .btn--peligro {
+    border-color: #e3b9a6;
+  }
+  .panel__edicion {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .panel__edicion[hidden] {
+    display: none;
+  }
+  .campo-edicion {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #3b4457;
+  }
+  .campo-edicion input {
+    border: 1px solid #dcd9cf;
+    border-radius: 4px;
+    padding: 9px 12px;
+    font-size: 13.5px;
+    color: var(--text);
+    font-weight: 400;
+    font-family: var(--font-sans);
+  }
+  .panel__edicion-botones {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
   }
   .eyebrow {
     font-size: 12px;

@@ -18,9 +18,25 @@ import type { PasoManual, ResultadoAdmision } from '../data/types';
 
 const CLAVE = 'cefeg_admisiones_estado_v1';
 
+// Datos básicos del aspirante que secretaría puede corregir a mano
+// (errores de digitación al agendar, un cambio de grado, etc.).
+export interface DatosEditables {
+  nombre?: string;
+  grado?: string;
+  acudienteNombre?: string;
+  acudienteTelefono?: string;
+}
+
 export interface CambiosAspirante {
   pasos?: PasoManual[];
   resultado?: ResultadoAdmision;
+  datos?: DatosEditables;
+  // "Eliminar" un aspirante en esta demo no borra nada de verdad — los de
+  // mockData.ts vienen del build y no se pueden borrar, y los agendados
+  // desde /admisiones/cita siguen guardados igual. Lo que hace es marcarlo
+  // como oculto en ESTE navegador, para que ni su fila ni su ficha se
+  // sigan mostrando.
+  eliminado?: boolean;
 }
 
 type EstadoGuardado = Record<string, CambiosAspirante>;
@@ -73,5 +89,22 @@ export function actualizarPaso(
 export function actualizarResultado(token: string, resultado: ResultadoAdmision) {
   const todo = leerTodo();
   todo[token] = { ...todo[token], resultado };
+  guardarTodo(todo);
+}
+
+// Guarda una corrección a los datos básicos del aspirante (nombre, grado,
+// acudiente). Se combina con lo que ya hubiera guardado — editar el
+// teléfono no borra un nombre corregido antes, por ejemplo.
+export function actualizarDatos(token: string, datos: DatosEditables) {
+  const todo = leerTodo();
+  todo[token] = { ...todo[token], datos: { ...todo[token]?.datos, ...datos } };
+  guardarTodo(todo);
+}
+
+// Marca el aspirante como eliminado en este navegador (ver la nota en
+// CambiosAspirante.eliminado).
+export function marcarEliminado(token: string) {
+  const todo = leerTodo();
+  todo[token] = { ...todo[token], eliminado: true };
   guardarTodo(todo);
 }
