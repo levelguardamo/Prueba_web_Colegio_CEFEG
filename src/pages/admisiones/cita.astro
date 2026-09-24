@@ -187,6 +187,24 @@ const DIAS_CERRADOS = [1, 4];
   const btnMesSiguiente = document.getElementById('calendario-next');
   const horariosLista = document.getElementById('horarios-lista');
   const horariosLabel = document.getElementById('horarios-label');
+
+  // Astro le agrega a cada elemento que genera en el build un atributo
+  // data-astro-cid-XXXXX, y esa misma cadena queda pegada a sus selectores
+  // CSS (así consigue que los estilos de un componente no choquen con los
+  // de otro). Las celdas del calendario, en cambio, las armamos aquí a
+  // mano con document.createElement — y esos elementos NO nacen con ese
+  // atributo, así que sin copiarlo se verían sin el estilo de
+  // Calendar.astro (mal alineadas, sin fondo ni cursor de "clickeable").
+  // Se toma prestado de un elemento que sí viene del build y que nunca se
+  // reemplaza (el encabezado del calendario), así funciona sin importar
+  // cómo cambie el hash de un build a otro.
+  const referenciaCid = document.querySelector('.calendario__hint');
+  const atributoCid = referenciaCid
+    ? Array.from(referenciaCid.attributes).find((attr) => attr.name.startsWith('data-astro-cid-'))
+    : null;
+  function marcarConCidAstro(el) {
+    if (atributoCid) el.setAttribute(atributoCid.name, '');
+  }
   const campoFecha = document.getElementById('campo-fecha');
   const campoFechaLegible = document.getElementById('campo-fecha-legible');
   const btnConfirmar = document.getElementById('btn-confirmar');
@@ -283,11 +301,13 @@ const DIAS_CERRADOS = [1, 4];
       const span = document.createElement('span');
       span.className = 'calendario__etiqueta';
       span.textContent = et;
+      marcarConCidAstro(span);
       grid.appendChild(span);
     });
 
     construirCeldas(anioActual, mesActual).forEach((c) => {
       const div = document.createElement('div');
+      marcarConCidAstro(div);
       if (!c) {
         div.className = 'calendario__celda calendario__celda--blank';
         grid.appendChild(div);
